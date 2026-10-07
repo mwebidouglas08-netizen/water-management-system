@@ -74,10 +74,15 @@ router.post('/users', async (req, res) => {
 // GET /api/admin/reports + assign handled via /api/reports/:id (admin allowed)
 // GET /api/admin/consumption — daily volume proxy
 router.get('/consumption', async (req, res) => {
-  const r = await query(`
-    SELECT date_trunc('day', ts) day, AVG(flow_lpm)::float avg_flow, COUNT(*) samples
+  try {
+    const r = await query(`
+    SELECT date_trunc('day', ts) AS "day", AVG(flow_lpm)::float avg_flow, COUNT(*) samples
     FROM readings WHERE ts > NOW() - INTERVAL '14 days' GROUP BY 1 ORDER BY 1 ASC`);
-  res.json(r.rows);
+    res.json(r.rows);
+  } catch (e) {
+    console.error('[admin/consumption]', e.message);
+    res.status(503).json({ error: 'Analytics temporarily unavailable.' });
+  }
 });
 
 // POST /api/admin/seed-demo — one-click demo dataset: demo institution with a

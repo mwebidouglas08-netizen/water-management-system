@@ -105,7 +105,7 @@ router.get('/:deviceId/stats', authRequired, async (req, res) => {
     const d = await query('SELECT * FROM devices WHERE id=$1', [req.params.deviceId]);
     if (!d.rows.length) return res.status(404).json({ error: 'No device' });
     const perDay = (await query(
-      `SELECT date_trunc('day', ts)::date day, AVG(flow_lpm)::float avg_flow,
+      `SELECT date_trunc('day', ts)::date AS "day", AVG(flow_lpm)::float avg_flow,
               AVG(level_percent)::float avg_level, MIN(level_percent)::float min_level,
               MAX(tds_ppm)::float max_tds, MAX(turbidity_ntu)::float max_turb, COUNT(*) samples
        FROM readings WHERE device_id=$1 AND ts > NOW() - ($2 || ' days')::INTERVAL

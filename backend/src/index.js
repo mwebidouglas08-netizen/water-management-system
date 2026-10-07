@@ -1,7 +1,13 @@
 require('dotenv').config();
+require('express-async-errors'); // forward async handler rejections to the error middleware
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+
+// Last-resort safety net: a single failed query must never take the whole
+// API down (Express 4 does not catch async handler rejections by itself).
+process.on('unhandledRejection', (err) => console.error('[unhandledRejection]', err && err.message));
+process.on('uncaughtException', (err) => console.error('[uncaughtException]', err && err.message));
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -38,6 +44,8 @@ app.use((err, req, res, next) => {
   console.error(err);
   if (err.code === 'NO_DATABASE_URL') return res.status(503).json({ error: err.message });
   if (err.code === 'ECONNREFUSED') return res.status(503).json({ error: 'Cannot reach Postgres. Check DATABASE_URL (Render → Environment → link majisafe-db) and redeploy.' });
+  if (err.code && /^(42|53|08|57)/.test(err.code))
+    return res.status(503).json({ error: 'Database temporarily unavailable. Try again in a moment.' });
   res.status(500).json({ error: 'Server error' });
 });
 
