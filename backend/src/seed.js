@@ -6,7 +6,24 @@ const { pool } = require('./db');
 const { simulateReading } = require('./services/iotSimulator');
 
 async function run() {
-  const schema = fs.readFileSync(path.join(__dirname, '..', '..', 'database', 'schema.sql'), 'utf8');
+  if (!process.env.DATABASE_URL) {
+    console.error(
+      '\n[seed] FATAL: DATABASE_URL is not set.\n' +
+      'This is why you saw ECONNREFUSED ::1:5432 / 127.0.0.1:5432 — pg fell back to localhost.\n' +
+      'Fix on Render:\n' +
+      '  1. Create a PostgreSQL (Dashboard → New → PostgreSQL → name majisafe-db).\n' +
+      '  2. Web service → Environment → add DATABASE_URL → Link → majisafe-db (connectionString).\n' +
+      '  3. Redeploy, then run seed ONCE via Shell (NOT as Start Command): "npm run seed".\n' +
+      '  Start Command must stay "npm start".\n'
+    );
+    process.exit(1);
+  }
+  const schemaPath = path.join(__dirname, '..', '..', 'database', 'schema.sql');
+  if (!fs.existsSync(schemaPath)) {
+    console.error(`[seed] FATAL: schema not found at ${schemaPath}. Deploy the full repo (not backend/ only) or set Root Directory=backend with repo intact.`);
+    process.exit(1);
+  }
+  const schema = fs.readFileSync(schemaPath, 'utf8');
   await pool.query(schema);
   console.log('[seed] schema ok');
 
@@ -54,7 +71,7 @@ async function run() {
     }
     console.log('[seed] device', d.name, r.rows[0].device_key);
   }
-  await pool.end();
+  if (pool) await pool.end();
   console.log('[seed] DONE. Login: admin@majisafe.ke/Admin123! tech@majisafe.ke/Tech123! school@majisafe.ke/User123!');
 }
 run().catch(e => { console.error(e); process.exit(1); });

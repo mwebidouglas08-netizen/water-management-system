@@ -5,6 +5,8 @@ services:
     rootDir: backend
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
     envVars:
       - key: NODE_VERSION
         value: 20.12.0
@@ -16,6 +18,8 @@ services:
         generateValue: true
       - key: FRONTEND_URL
         sync: false
+      - key: PGSSL
+        value: true
 
 databases:
   - name: majisafe-db
