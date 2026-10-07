@@ -199,6 +199,26 @@ th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #e2e8f0; 
 .auth-form { padding: 40px clamp(20px, 5vw, 70px); display: flex; flex-direction: column; justify-content: center; background: #fff; }
 .auth-form h2 { font-size: 30px; color: var(--blue-950); margin: 14px 0 4px; }
 
+/* ---------- cinematic motion ---------- */
+@keyframes riseIn { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: none; } }
+@keyframes kenburns { from { transform: scale(1); } to { transform: scale(1.1); } }
+.hero-bg-img { animation: kenburns 30s ease-in-out infinite alternate; }
+.hero-inner .eyebrow { animation: riseIn .8s .05s both; }
+.hero-inner h1 { animation: riseIn .9s .15s both; }
+.hero-sub { animation: riseIn .9s .3s both; }
+.hero-bg .hero-cta { animation: riseIn .9s .45s both; }
+.hero-chips { animation: riseIn .9s .6s both; }
+.btn { transition: transform .2s ease, box-shadow .25s ease, background .25s ease; }
+.btn:hover { transform: translateY(-2px); }
+.btn:active { transform: none; }
+.prob-card img, .serve-card img { transition: transform .8s ease; }
+.prob-card:hover img, .serve-card:hover img { transform: scale(1.06); }
+@media (prefers-reduced-motion: reduce) {
+  .hero-bg-img { animation: none; }
+  .hero-inner .eyebrow, .hero-inner h1, .hero-sub, .hero-bg .hero-cta, .hero-chips { animation: none; }
+  .btn:hover { transform: none; }
+}
+
 /* ---------- scroll reveal + countup ---------- */
 .reveal { opacity: 0; transform: translateY(26px); transition: opacity .7s ease, transform .7s ease; }
 .reveal.visible { opacity: 1; transform: none; }
