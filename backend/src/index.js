@@ -17,9 +17,9 @@ app.get('/', (req, res) => res.json({ name: 'MajiSafe API', version: '1.0.0', do
 // Health check must succeed even without DB so Render can pass deploy checks.
 // DB status is reported explicitly instead of crashing the process.
 app.get('/api/health', async (req, res) => {
-  const { checkDb, isDbConfigured } = require('./db');
+  const { checkDb, isDbConfigured, tablesReady } = require('./db');
   const db = await checkDb();
-  res.json({ ok: true, time: new Date().toISOString(), dbConfigured: isDbConfigured, dbOk: db.ok, dbError: db.error || null });
+  res.json({ ok: true, time: new Date().toISOString(), dbConfigured: isDbConfigured, dbOk: db.ok, dbError: db.error || null, tables: await tablesReady() });
 });
 
 app.use('/api/auth', require('./routes/auth'));
@@ -41,6 +41,10 @@ app.use((err, req, res, next) => {
 });
 
 const HOST = '0.0.0.0';
-app.listen(PORT, HOST, () => {
-  console.log(`[majisafe] API on ${HOST}:${PORT} dbConfigured=${require('./db').isDbConfigured}`);
+// Ensure tables exist before accepting traffic (safe: all IF NOT EXISTS).
+// Never crashes the process — health must stay reachable.
+require('./migrate').migrate().finally(() => {
+  app.listen(PORT, HOST, () => {
+    console.log(`[majisafe] API on ${HOST}:${PORT} dbConfigured=${require('./db').isDbConfigured}`);
+  });
 });

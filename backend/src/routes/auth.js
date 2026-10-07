@@ -24,7 +24,12 @@ router.post('/register', async (req, res) => {
     if (status === 'pending') return res.status(201).json({ message: 'Technician application received. Await admin approval.', user });
     const token = signToken(user);
     res.status(201).json({ token, user });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Register failed' }); }
+  } catch (e) {
+    console.error('[auth/register]', e.code || '', e.message);
+    if (e.code === 'NO_DATABASE_URL')
+      return res.status(503).json({ error: 'The service database is still connecting. Please wait a minute and try again.' });
+    return res.status(503).json({ error: 'The service database is unavailable right now. Please wait a moment and try again.' });
+  }
 });
 
 // POST /api/auth/login
@@ -39,7 +44,12 @@ router.post('/login', async (req, res) => {
     if (u.status !== 'active') return res.status(403).json({ error: `Account ${u.status}. Contact admin.` });
     const user = { id: u.id, name: u.name, email: u.email, role: u.role, org_name: u.org_name, phone: u.phone, location: u.location, status: u.status };
     res.json({ token: signToken(user), user });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Login failed' }); }
+  } catch (e) {
+    console.error('[auth/login]', e.code || '', e.message);
+    if (e.code === 'NO_DATABASE_URL')
+      return res.status(503).json({ error: 'The service database is still connecting. Please wait a minute and try again.' });
+    return res.status(503).json({ error: 'The service database is unavailable right now. Please wait a moment and try again.' });
+  }
 });
 
 module.exports = router;

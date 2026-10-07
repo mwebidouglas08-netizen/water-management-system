@@ -30,8 +30,8 @@ export default function Footer() {
         <div>
           <h4>Contact</h4>
           <ul>
-            <li><a href="mailto:hello@majisafe.ke">hello@majisafe.ke</a></li>
-            <li><a href="tel:+254700000000">+254 700 000 000</a></li>
+            <li><a href="mailto:mwebidouglas08@gmail.com">mwebidouglas08@gmail.com</a></li>
+            <li><a href="tel:+254796820013">+254 796 820 013</a></li>
             <li>Monday to Saturday, 8am to 6pm EAT</li>
           </ul>
         </div>

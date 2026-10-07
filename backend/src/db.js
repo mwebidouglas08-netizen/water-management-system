@@ -44,4 +44,16 @@ async function checkDb() {
   }
 }
 
-module.exports = { pool, query, checkDb, isDbConfigured };
+// True when the core tables exist (i.e. migrate ran). Lets /api/health
+// — and support — distinguish "no database" from "schema not applied".
+async function tablesReady() {
+  if (!pool) return false;
+  try {
+    await pool.query('SELECT 1 FROM users LIMIT 1');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+module.exports = { pool, query, checkDb, isDbConfigured, tablesReady };

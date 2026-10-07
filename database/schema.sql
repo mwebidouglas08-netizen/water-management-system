@@ -1,7 +1,6 @@
 -- MajiSafe Postgres schema
--- Run once: psql $DATABASE_URL -f database/schema.sql
-
-CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+-- Applied automatically at server boot (see backend/src/migrate.js) and by seed.
+-- Note: gen_random_uuid() is built into PostgreSQL 13+, no extension needed.
 
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
