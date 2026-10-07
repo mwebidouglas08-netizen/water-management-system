@@ -3,119 +3,207 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 
 const IMG = {
-  hero: 'https://images.unsplash.com/photo-1541675154750-0444c7d51e8e?q=80&w=1200&auto=format&fit=crop', // dam water
-  leak: 'https://images.unsplash.com/photo-1581244277943-fe4a9c777189?q=80&w=1200&auto=format&fit=crop', // pipe/leak
-  tank: 'https://images.unsplash.com/photo-1504893524553-b855bce32c67?q=80&w=1200&auto=format&fit=crop', // river/clean water
-  school: 'https://images.unsplash.com/photo-1497375638960-ca368c7231e4?q=80&w=1200&auto=format&fit=crop', // school kids? fallback water
-  tech: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?q=80&w=1200&auto=format&fit=crop', // technician
-  pure: 'https://images.unsplash.com/photo-1548839140-29a749e1cf4d?q=80&w=1200&auto=format&fit=crop', // clean glass
+  hero: 'https://images.unsplash.com/photo-1541675154750-0444c7d51e8e?q=80&w=1400&auto=format&fit=crop',
+  burst: 'https://images.unsplash.com/photo-1581244277943-fe4a9c777189?q=80&w=1200&auto=format&fit=crop',
+  river: 'https://images.unsplash.com/photo-1504893524553-b855bce32c67?q=80&w=1200&auto=format&fit=crop',
+  tech: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?q=80&w=1200&auto=format&fit=crop',
+  glass: 'https://images.unsplash.com/photo-1548839140-29a749e1cf4d?q=80&w=1200&auto=format&fit=crop',
+  wave: 'https://images.unsplash.com/photo-1439405326854-014607f694d7?q=80&w=1200&auto=format&fit=crop'
 };
+
+const FAQS = [
+  {
+    q: 'Do we need sensors installed to start using MajiSafe?',
+    a: 'No. Every account opens with a live simulation of tank levels, flow and water quality, so your team can learn the dashboards, practise filing reports and see how leak and shortage alerts work. When you are ready, a technician fits the sensor unit to your tank and the same dashboard switches to real readings.'
+  },
+  {
+    q: 'How does MajiSafe catch a leak before anyone sees it?',
+    a: 'The system studies flow around the clock. Water moving between midnight and 4am, when every tap should be closed, is the classic signature of a hidden leak. Flow that never pauses for six hours or more, or a sudden spike paired with a pressure drop, raises a burst alert with the exact numbers quoted, so the caretaker knows what to check.'
+  },
+  {
+    q: 'How does the shortage warning work?',
+    a: 'The dashboard converts the live tank percentage into litres, compares it with your site’s daily use, and shows days of water remaining. Below two days the alert turns urgent, which leaves time to ration sensibly and book a refill instead of waking up to dry taps.'
+  },
+  {
+    q: 'What happens after I file a report?',
+    a: 'Your report is triaged automatically by category and urgency, then appears in the technician inbox alongside direct messages from residents. You follow it from Open to Assigned to In Progress to Resolved, and the technician can message you back from the same thread.'
+  },
+  {
+    q: 'Who is MajiSafe built for?',
+    a: 'Any institution that cannot afford to run dry: schools, hospitals and clinics, residential estates, factories, and the water utilities and vendors that serve them. Residents around those institutions use the same reporting channel.'
+  },
+  {
+    q: 'Does it work where the internet is weak?',
+    a: 'Yes. The sensor unit buffers readings and retries when the connection returns, and the dashboards are deliberately light so they load on 3G phones and shared office computers.'
+  }
+];
 
 export default function Landing() {
   return (
     <>
       <Navbar />
-      <div className="container">
-        <div className="hero">
-          <div>
-            <span className="pill">🇰🇪 BUILT FOR INSTITUTIONS • SCHOOLS • ESTATES • HOSPITALS</span>
-            <h1>Stop losing water.<br />See every litre, <span style={{ color: '#1591e6' }}>live.</span></h1>
-            <p>MajiSafe pairs low-cost IoT sensors with AI to catch leaks, predict shortages, score purity — and routes citizen reports straight to technicians. From a single school tank to a whole utility.</p>
-            <div style={{ display: 'flex', gap: 12, marginTop: 18 }}>
-              <Link to="/register" className="btn btn-primary">Start monitoring free</Link>
-              <a href="#how" className="btn btn-ghost">See how it works</a>
+      <main>
+        <div className="container">
+          <div className="hero-new">
+            <div className="hero-copy">
+              <span className="eyebrow">Water monitoring for institutions and communities</span>
+              <h1>Know your water <em>before</em> it runs out.</h1>
+              <p className="lead">
+                MajiSafe watches your tank levels, pipe flow and water quality around the
+                clock. It flags leaks and shortages early, and connects residents to the
+                technicians who fix them — built for schools, hospitals, estates and utilities.
+              </p>
+              <div className="hero-cta">
+                <Link to="/register" className="btn btn-primary">Get started</Link>
+                <a href="#problem" className="btn btn-ghost">Understand the problem</a>
+              </div>
+              <p className="hero-note">No hardware needed to explore — the demo simulates live sensor data.</p>
             </div>
-            <div className="grid grid-3" style={{ marginTop: 22 }}>
-              <div className="card"><div className="kpi">38%</div><div className="muted">water lost as NRW in cities — we cut it to &lt;12%</div></div>
-              <div className="card"><div className="kpi">48h</div><div className="muted">early shortage warning before tanks run dry</div></div>
-              <div className="card"><div className="kpi">24/7</div><div className="muted">live level • flow • TDS • turbidity • pH</div></div>
+            <div className="hero-media">
+              <img src={IMG.hero} alt="Reservoir holding clean water at golden hour" />
+              <div className="hero-caption">A full reservoir tells you nothing about the leak halfway down the hill. MajiSafe does.</div>
             </div>
           </div>
-          <img className="hero-img" src={IMG.hero} alt="Water dam HD" />
-        </div>
 
-        <div id="problem" className="split">
-          <img src={IMG.leak} alt="Leaking pipe" />
-          <div>
-            <span className="pill">THE PROBLEM</span>
-            <h2 className="section-title">Leaks run for weeks. Tanks empty overnight. No one knows.</h2>
-            <ul>
-              <li>🚰 Burst pipes flood roads while reports die in WhatsApp groups.</li>
-              <li>🏫 Schools close kitchens when roof tanks hit 0% without warning.</li>
-              <li>🦠 Borehole blending spikes TDS/turbidity — kids drink it unseen.</li>
-              <li>🧾 High bills from hidden cistern + underground leaks.</li>
-            </ul>
-            <p className="muted">MajiSafe closes the loop: <b>Sense → AI-diagnose → Alert → Report → Fix → Verify.</b></p>
+          <div className="stat-band" aria-label="Key figures">
+            <div className="stat"><strong>38%</strong><span>of treated urban water never reaches a tap — it escapes through leaks and bursts.</span></div>
+            <div className="stat"><strong>48 hrs</strong><span>of early warning before a monitored tank runs dry, time enough to act.</span></div>
+            <div className="stat"><strong>24/7</strong><span>watch over level, flow, pressure and purity at every connected site.</span></div>
+          </div>
+
+          <section id="problem" className="section">
+            <div className="section-head">
+              <span className="eyebrow">The problem</span>
+              <h2>Water disappears quietly. The damage does not.</h2>
+              <p>Most water crises do not begin with a dramatic burst. They begin with a toilet cistern that never quite closes, a joint dripping underground, a tank nobody checked on Friday. By the time anyone notices, kitchens are closed and the repair bill has tripled.</p>
+            </div>
+            <div className="prob-grid">
+              <article className="prob-card">
+                <img src={IMG.burst} alt="Plumber repairing a leaking pipe" loading="lazy" />
+                <div className="prob-body">
+                  <h3>Leaks run for weeks, unseen</h3>
+                  <p>Bursts flood roads while slow underground leaks quietly drain tanks and inflate bills. Reports die in chat groups and never reach the person with the wrench.</p>
+                </div>
+              </article>
+              <article className="prob-card">
+                <img src={IMG.wave} alt="Water running out over dark stone" loading="lazy" />
+                <div className="prob-body">
+                  <h3>Tanks empty overnight</h3>
+                  <p>Schools and clinics discover at dawn that the roof tank hit zero. Kitchens close, toilets lock, and the day’s programme collapses — with no warning the evening before.</p>
+                </div>
+              </article>
+              <article className="prob-card">
+                <img src={IMG.glass} alt="Glass of clear drinking water" loading="lazy" />
+                <div className="prob-body">
+                  <h3>Unsafe water looks fine</h3>
+                  <p>Blended borehole water can spike in dissolved solids or cloudiness after rain. Without live purity checks, children drink it for days before anyone tests a sample.</p>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section id="approach" className="section">
+            <div className="section-head">
+              <span className="eyebrow">Our approach</span>
+              <h2>Sense the water. Read the signs. Send help.</h2>
+              <p>One loop, running every minute: small sensors report the facts, the system interprets them in plain language, and people — residents, technicians, managers — act on them.</p>
+            </div>
+            <div className="steps">
+              <div className="step">
+                <span className="step-no">Step 01</span>
+                <h3>Sense</h3>
+                <p>A compact unit on each tank and line reports level, flow, pressure and quality every minute. No hardware yet? The dashboard simulates the same feed so you can start today.</p>
+              </div>
+              <div className="step">
+                <span className="step-no">Step 02</span>
+                <h3>Interpret</h3>
+                <p>Night-flow analysis finds hidden leaks, spike detection catches bursts, and a 0–100 purity score grades every reading — each alert written in plain language with what to do next.</p>
+              </div>
+              <div className="step">
+                <span className="step-no">Step 03</span>
+                <h3>Resolve</h3>
+                <p>Residents file geo-tagged reports in seconds. Technicians receive them in a proper inbox with a diagnosis checklist, and managers watch every ticket through to resolution.</p>
+              </div>
+            </div>
+            <div className="split">
+              <img src={IMG.tech} alt="Water technician inspecting equipment" loading="lazy" />
+              <div>
+                <h2>Built around the people who keep water flowing</h2>
+                <ul className="check-list">
+                  <li><strong>Caretakers and managers</strong> see every tank at a glance instead of climbing ladders with a dipstick.</li>
+                  <li><strong>Residents and parents</strong> report a burst or dry tap once — and can see it being fixed.</li>
+                  <li><strong>Technicians</strong> stop chasing rumours and start each job with readings, a likely cause and a parts list.</li>
+                </ul>
+              </div>
+            </div>
+          </section>
+
+          <section id="serve" className="section">
+            <div className="section-head">
+              <span className="eyebrow">Who we serve</span>
+              <h2>One system, from a single school tank to a whole utility</h2>
+            </div>
+            <div className="serve-grid">
+              <div className="serve-card">
+                <img src={IMG.river} alt="Clean river water" loading="lazy" />
+                <div><h3>Schools</h3><p>Keep kitchens and dormitories supplied, and prove water safety to parents and boards.</p></div>
+              </div>
+              <div className="serve-card">
+                <img src={IMG.glass} alt="Safe drinking water" loading="lazy" />
+                <div><h3>Hospitals and clinics</h3><p>Guarantee sterile, uninterrupted supply for wards, theatres and laboratories.</p></div>
+              </div>
+              <div className="serve-card">
+                <img src={IMG.hero} alt="Estate water storage at sunset" loading="lazy" />
+                <div><h3>Estates and apartments</h3><p>Share fairly during rationing, split bills honestly, and fix riser leaks fast.</p></div>
+              </div>
+              <div className="serve-card">
+                <img src={IMG.tech} alt="Utility technician at work" loading="lazy" />
+                <div><h3>Utilities and vendors</h3><p>Cut non-revenue water, prioritise bursts by evidence, and answer the public with data.</p></div>
+              </div>
+            </div>
+          </section>
+
+          <section className="section">
+            <div className="split">
+              <div>
+                <span className="eyebrow">Inside the product</span>
+                <h2>Three workspaces, one shared truth</h2>
+                <p><strong>Institutions</strong> get live gauges, daily charts, purity grades and shortage forecasts. <strong>Technicians</strong> get an inbox, a diagnosis helper and a job board. <strong>Admins</strong> get oversight of users, tickets and consumption.</p>
+                <p className="muted">Daggy, the built-in assistant, sits in the corner of every page and answers questions about your water and the system itself.</p>
+                <div className="hero-cta">
+                  <Link to="/register" className="btn btn-primary">Create an account</Link>
+                  <Link to="/login" className="btn btn-ghost">Sign in</Link>
+                </div>
+              </div>
+              <img src={IMG.river} alt="Clear water flowing over stones" loading="lazy" />
+            </div>
+          </section>
+
+          <section id="faq" className="section">
+            <div className="section-head">
+              <span className="eyebrow">Questions</span>
+              <h2>Asked by caretakers, answered plainly</h2>
+            </div>
+            <div className="faq">
+              {FAQS.map((f) => (
+                <details key={f.q}>
+                  <summary>{f.q}</summary>
+                  <p>{f.a}</p>
+                </details>
+              ))}
+            </div>
+          </section>
+
+          <div className="cta-band">
+            <h2>Bring MajiSafe to your institution.</h2>
+            <p>Create an account in a minute, explore with simulated live data, and connect your first tank whenever you are ready.</p>
+            <div className="row">
+              <Link to="/register" className="btn btn-light">Get started</Link>
+              <Link to="/login" className="btn btn-outline-light">Sign in</Link>
+            </div>
           </div>
         </div>
-
-        <div id="how" className="card" style={{ padding: 28 }}>
-          <span className="pill">HOW IT WORKS</span>
-          <h2 className="section-title">IoT → AI → Action in 60 seconds</h2>
-          <div className="grid grid-3">
-            <div className="card"><h3>1️⃣ Sense</h3><p>ESP32 + level, flow, pressure, TDS, turbidity & pH sensors post every 60s. <code>POST /api/ingest/DEVICE_KEY</code>. No hardware? Simulator keeps demo live.</p></div>
-            <div className="card"><h3>2️⃣ AI detects</h3><p>Night-flow leak logic, burst spike + pressure-drop, purity scoring (WHO-ish), days-to-empty forecast. Every alert ships with plain-language advice.</p></div>
-            <div className="card"><h3>3️⃣ Humans fix</h3><p>Citizens file geo-tagged reports → technician inbox → AI checklist → job resolved. Admin sees NRW, SLA, consumption.</p></div>
-          </div>
-        </div>
-
-        <div className="split">
-          <div>
-            <span className="pill">LIVE DEMO PREVIEW</span>
-            <h2 className="section-title">Three dashboards, one truth</h2>
-            <p><b>👨‍👩‍👧 User/Institution:</b> gauges, 24h charts, purity grade, AI insights, alerts, reports with status timeline, device keys.</p>
-            <p><b>🔧 Technician:</b> KPIs, inbox (reports + DMs), AI Diagnose helper, jobs board, device health.</p>
-            <p><b>🛡️ Admin:</b> users + technician approvals, triage + assign, analytics, broadcasts.</p>
-            <Link to="/register" className="btn btn-primary">Try demo accounts</Link>
-            <p className="muted">admin@majisafe.ke / tech@majisafe.ke / school@majisafe.ke</p>
-          </div>
-          <img src={IMG.tank} alt="Water tanks" />
-        </div>
-
-        <div id="kit" className="split">
-          <img src={IMG.tech} alt="Technician at work" />
-          <div>
-            <span className="pill">IOT KIT • KES 12–18K PER SITE</span>
-            <h2 className="section-title">Off-the-shelf parts, 1-day install</h2>
-            <ul>
-              <li>ESP32 DevKit + ultrasonic JSN-SR04T (tank %)</li>
-              <li>YF-S201 flow + pressure transducer</li>
-              <li>TDS + turbidity + pH probes (purity score)</li>
-              <li>Solar trickle + battery readout</li>
-            </ul>
-            <p className="muted">Full wiring + Arduino sketch: <code>docs/IOT_GUIDE.md</code></p>
-          </div>
-        </div>
-
-        <div className="split">
-          <div>
-            <span className="pill">PURITY YOU CAN TRUST</span>
-            <h2 className="section-title">Know if it's safe to drink — live</h2>
-            <p>Score 0–100 from TDS, turbidity, pH. <b>85+ Excellent, 70+ Good, 50+ Fair (boil), &lt;50 Poor/Unsafe.</b> Daggy explains every dip and what to do in Swahili too.</p>
-          </div>
-          <img src={IMG.pure} alt="Clean drinking water" />
-        </div>
-
-        <div id="pricing" className="grid grid-3" style={{ padding: '20px 0' }}>
-          <div className="card"><h3>Starter</h3><div className="kpi">Free</div><p>1 site • 1 device • simulator • community reports. Perfect for pilot schools.</p><Link to="/register" className="btn btn-ghost">Start free</Link></div>
-          <div className="card" style={{ border: '2px solid #1591e6' }}><h3>Institution ⭐</h3><div className="kpi">KES 2,500/mo</div><p>5 sites • AI leak + purity • SMS alerts • technician dispatch • analytics.</p><Link to="/register" className="btn btn-primary">Choose Institution</Link></div>
-          <div className="card"><h3>Utility</h3><div className="kpi">Custom</div><p>Unlimited sites • NRW maps • MPesa + GIS v2 • SLA support.</p><a href="mailto:hello@majisafe.ke" className="btn btn-ghost">Talk to us</a></div>
-        </div>
-
-        <div id="faq" className="card">
-          <h2 className="section-title">FAQ</h2>
-          <p><b>Do I need sensors to try?</b> No — demo auto-simulates live readings. Add hardware later with the same device key.</p>
-          <p><b>How are leaks found?</b> Night flow {'>'}2 L/min, 6h nonstop flow, or burst spike + pressure drop. AI cites the exact numbers.</p>
-          <p><b>Who sees my report?</b> Nearby technicians + admin. You track Open → Assigned → Resolved and can message them.</p>
-          <p><b>Can it work upcountry with weak internet?</b> Yes — ESP32 buffers and retries; dashboard is 3G-light.</p>
-        </div>
-
-        <div className="card" style={{ margin: '26px 0', textAlign: 'center', background: 'linear-gradient(135deg,#062b4d,#0b5fa5)', color: '#fff', border: 0 }}>
-          <h2>Ready to save 30% of your water?</h2>
-          <p>Join Greenhill-style pilots across Kiambu & Nairobi.</p>
-          <Link to="/register" className="btn" style={{ background: '#fff', color: '#062b4d' }}>Create free account →</Link>
-        </div>
-      </div>
+      </main>
       <Footer />
     </>
   );

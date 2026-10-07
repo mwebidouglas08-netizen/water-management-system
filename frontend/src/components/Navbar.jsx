@@ -7,21 +7,20 @@ export default function Navbar() {
   return (
     <div className="nav">
       <div className="container nav-inner">
-        <Link to="/" className="brand"><span className="brand-drop">💧</span> MajiSafe</Link>
-        <div className="nav-links">
-          <a href="/#problem">Problem</a>
-          <a href="/#how">How it works</a>
-          <a href="/#kit">IoT Kit</a>
-          <a href="/#pricing">Pricing</a>
-          <a href="/#faq">FAQ</a>
-        </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <Link to="/" className="brand"><span className="brand-mark">M</span> MajiSafe</Link>
+        <nav className="nav-links" aria-label="Primary">
+          <a href="#problem">The problem</a>
+          <a href="#approach">Our approach</a>
+          <a href="#serve">Who we serve</a>
+          <a href="#faq">FAQ</a>
+        </nav>
+        <div className="nav-actions">
           {!user ? (<>
             <Link to="/login" className="btn btn-ghost">Sign in</Link>
             <Link to="/register" className="btn btn-primary">Get started</Link>
           </>) : (<>
             <Link to={dash} className="btn btn-ghost">Dashboard</Link>
-            <button className="btn btn-ghost" onClick={logout}>Logout</button>
+            <button type="button" className="btn btn-ghost" onClick={logout}>Sign out</button>
           </>)}
         </div>
       </div>

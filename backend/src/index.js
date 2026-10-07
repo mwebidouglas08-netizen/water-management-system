@@ -6,7 +6,10 @@ const morgan = require('morgan');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors({ origin: (process.env.FRONTEND_URL || '*').split(','), credentials: true }));
+const configuredOrigins = (process.env.FRONTEND_URL || '').split(',').map((s) => s.trim()).filter(Boolean);
+// Reflect the request origin when no allowlist is configured (dev / first deploy),
+// otherwise enforce the allowlist. Never send '*' together with credentials.
+app.use(cors({ origin: configuredOrigins.length ? configuredOrigins : true, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('dev'));
 
