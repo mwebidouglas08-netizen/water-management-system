@@ -141,7 +141,15 @@ export default function Landing() {
           <div className="container hero-inner">
             <Reveal>
               <span className="eyebrow eyebrow-light">Water monitoring for institutions and communities</span>
-              <h1>Know your water <em>before</em> it runs out.</h1>
+              <h1 aria-label="Know your water before it runs out.">
+                <span className="w-mask" aria-hidden="true"><span style={{ '--i': 0 }}>Know</span></span>{' '}
+                <span className="w-mask" aria-hidden="true"><span style={{ '--i': 1 }}>your</span></span>{' '}
+                <span className="w-mask" aria-hidden="true"><span style={{ '--i': 2 }}>water</span></span>{' '}
+                <span className="w-mask" aria-hidden="true"><span style={{ '--i': 3 }}><em className="u-draw">before<svg viewBox="0 0 120 12" preserveAspectRatio="none" aria-hidden="true"><path d="M3 9 C 30 3, 60 3, 117 7" /></svg></em></span></span>{' '}
+                <span className="w-mask" aria-hidden="true"><span style={{ '--i': 4 }}>it</span></span>{' '}
+                <span className="w-mask" aria-hidden="true"><span style={{ '--i': 5 }}>runs</span></span>{' '}
+                <span className="w-mask" aria-hidden="true"><span style={{ '--i': 6 }}>out.</span></span>
+              </h1>
               <p className="hero-sub">
                 MajiSafe watches your tank levels, pipe flow and water quality around the
                 clock. It flags leaks and shortages early, and connects residents to the
@@ -189,7 +197,7 @@ export default function Landing() {
               <div className="section-head">
                 <span className="eyebrow">The problem</span>
                 <h2>Water disappears quietly. The damage does not.</h2>
-                <p>Most water crises do not begin with a dramatic burst. They begin with a cistern that never quite closes, a joint dripping underground, a tank nobody checked on Friday. By the time anyone notices, kitchens are closed and the repair bill has tripled.</p>
+                <p className="dropcap">Most water crises do not begin with a dramatic burst. They begin with a cistern that never quite closes, a joint dripping underground, a tank nobody checked on Friday. By the time anyone notices, kitchens are closed and the repair bill has tripled.</p>
               </div>
             </Reveal>
             <div className="prob-grid">
@@ -229,7 +237,7 @@ export default function Landing() {
               <div className="section-head">
                 <span className="eyebrow">Our approach</span>
                 <h2>Sense the water. Read the signs. Send help.</h2>
-                <p>One loop, running every minute: small sensors report the facts, the system interprets them in plain language, and people — residents, technicians, managers — act on them.</p>
+                <p className="dropcap">One loop, running every minute: small sensors report the facts, the system interprets them in plain language, and people — residents, technicians, managers — act on them.</p>
               </div>
             </Reveal>
             <div className="steps">
