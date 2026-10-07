@@ -43,13 +43,15 @@ app.use((err, req, res, next) => {
 
 const HOST = '0.0.0.0';
 
-// Creates the first admin from env when none exists, so /admin is reachable
-// without manual SQL. Set ADMIN_EMAIL + ADMIN_PASSWORD on Render once.
+// Creates the first admin on boot when none exists, so /admin is reachable
+// without manual SQL. Uses ADMIN_EMAIL/ADMIN_PASSWORD when set, otherwise
+// the documented demo credentials (change right after first sign-in).
 async function ensureAdmin() {
   const { pool, isDbConfigured } = require('./db');
-  const email = (process.env.ADMIN_EMAIL || '').toLowerCase().trim();
-  const password = process.env.ADMIN_PASSWORD || '';
-  if (!isDbConfigured || !pool || !email || !password) return;
+  if (!isDbConfigured || !pool) return;
+  const email = (process.env.ADMIN_EMAIL || 'admin@majisafe.ke').toLowerCase().trim();
+  const password = process.env.ADMIN_PASSWORD || 'Admin123!';
+  const usingDefaults = !process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD;
   try {
     const existing = await pool.query(`SELECT id FROM users WHERE role='admin' LIMIT 1`);
     if (existing.rows.length) return;
@@ -61,7 +63,7 @@ async function ensureAdmin() {
        ON CONFLICT (email) DO UPDATE SET password_hash=EXCLUDED.password_hash, role='admin', status='active'`,
       [email, hash]
     );
-    console.log(`[boot] admin account ready for ${email}`);
+    console.log(`[boot] admin account ready for ${email}${usingDefaults ? ' (DEFAULT credentials — change after first sign-in)' : ''}`);
   } catch (e) {
     console.error('[boot] ensureAdmin failed:', e.message);
   }
