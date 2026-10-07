@@ -27,7 +27,12 @@ export default function Login() {
 
   return (
     <div className="auth-wrap">
-      <img className="auth-img" src="https://images.unsplash.com/photo-1439405326854-014607f694d7?q=80&w=1200&auto=format&fit=crop" alt="Ocean wave at dawn" />
+      <img
+        className="auth-img"
+        src="https://images.pexels.com/photos/30370979/pexels-photo-30370979.jpeg?auto=compress&cs=tinysrgb&w=1200"
+        onError={(e) => { if (!e.currentTarget.dataset.fb) { e.currentTarget.dataset.fb = '1'; e.currentTarget.src = 'https://images.unsplash.com/photo-1439405326854-014607f694d7?q=80&w=1200&auto=format&fit=crop'; } }}
+        alt="African woman carrying water containers outdoors"
+      />
       <form className="auth-form" onSubmit={go}>
         <Link to="/" className="brand"><span className="brand-mark">M</span> MajiSafe</Link>
         <h2>Welcome back</h2>

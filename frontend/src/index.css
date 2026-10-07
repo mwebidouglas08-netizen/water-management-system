@@ -205,7 +205,8 @@ th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #e2e8f0; 
 @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
 
 /* ---------- full-bleed hero ---------- */
-.hero-bg { position: relative; background-size: cover; background-position: center; color: #fff; }
+.hero-bg { position: relative; overflow: hidden; color: #fff; }
+.hero-bg-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
 .hero-shade { position: absolute; inset: 0; background: linear-gradient(100deg, rgba(3, 22, 40, .82) 15%, rgba(4, 40, 72, .52) 52%, rgba(4, 30, 55, .22) 100%); }
 .hero-inner { position: relative; z-index: 1; padding: 110px 20px 90px; max-width: 1180px; }
 .hero-inner h1 { font-size: clamp(40px, 6vw, 68px); margin: 0 0 18px; max-width: 14em; color: #fff; }
@@ -258,8 +259,8 @@ th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #e2e8f0; 
 .mock-alert { margin-top: 14px; background: rgba(245, 158, 11, .16); border: 1px solid rgba(245, 158, 11, .45); color: #fde9c8; border-radius: 12px; padding: 11px 15px; font-size: 13.5px; }
 
 /* ---------- full-bleed background band ---------- */
-.band-bg { position: relative; background-size: cover; background-position: center; background-attachment: fixed; margin: 64px 0 8px; }
-@media (max-width: 900px) { .band-bg { background-attachment: scroll; } }
+.band-bg { position: relative; overflow: hidden; margin: 64px 0 8px; }
+.band-bg-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .band-shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(3, 22, 40, .55), rgba(3, 22, 40, .68)); }
 .band-inner { position: relative; z-index: 1; text-align: center; padding: 96px 20px; color: #fff; }
 .band-inner h2 { font-size: clamp(26px, 4vw, 42px); max-width: 22em; margin: 0 auto 12px; font-style: italic; }

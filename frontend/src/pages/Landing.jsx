@@ -3,14 +3,54 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { Reveal, CountUp } from '../components/motion';
 
+// Real documentary photography (Pexels, free licence) from Kenya and the
+// wider region — each with a fallback so an image can never break the page.
+const px = (id, w = 800) => `https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?auto=compress&cs=tinysrgb&w=${w}`;
+const U = (id) => `https://images.unsplash.com/${id}?q=80&w=1200&auto=format&fit=crop`;
+
 const IMG = {
-  hero: 'https://images.unsplash.com/photo-1541675154750-0444c7d51e8e?q=80&w=2000&auto=format&fit=crop',
-  burst: 'https://images.unsplash.com/photo-1581244277943-fe4a9c777189?q=80&w=1200&auto=format&fit=crop',
-  river: 'https://images.unsplash.com/photo-1504893524553-b855bce32c67?q=80&w=1600&auto=format&fit=crop',
-  tech: 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?q=80&w=1200&auto=format&fit=crop',
-  glass: 'https://images.unsplash.com/photo-1548839140-29a749e1cf4d?q=80&w=1200&auto=format&fit=crop',
-  wave: 'https://images.unsplash.com/photo-1439405326854-014607f694d7?q=80&w=1400&auto=format&fit=crop'
+  hero: px(30441497, 1600),      // African woman carrying water jugs outdoors
+  leak: px(32588548),            // plumber repairing a pipe with a wrench
+  dry: px(1108822),              // girl carrying a water container, Turkana Kenya at sunset
+  unsafe: px(32154739),          // child drawing water from a village pump
+  tech: px(6419128, 1200),       // plumber fitting pipes
+  band: px(30253169, 1600),      // mother and child with water containers at home
+  schools: px(30058872),         // African classroom, teacher and students
+  hospitals: px(4173251),        // doctor in a clinic corridor
+  estates: px(30370976),         // woman with yellow water containers at her home
+  utilities: px(29069429)        // Nairobi city skyline, Kenya
 };
+
+const FALLBACK = {
+  hero: U('photo-1541675154750-0444c7d51e8e'),
+  leak: U('photo-1581244277943-fe4a9c777189'),
+  dry: U('photo-1439405326854-014607f694d7'),
+  unsafe: U('photo-1548839140-29a749e1cf4d'),
+  tech: U('photo-1581092160562-40aa08e78837'),
+  band: U('photo-1504893524553-b855bce32c67'),
+  schools: U('photo-1504893524553-b855bce32c67'),
+  hospitals: U('photo-1548839140-29a749e1cf4d'),
+  estates: U('photo-1541675154750-0444c7d51e8e'),
+  utilities: U('photo-1439405326854-014607f694d7')
+};
+
+// Builds <img> props with a one-time fallback swap — images never break.
+function pic(key, alt, className, extra = {}) {
+  return {
+    src: IMG[key],
+    alt,
+    className,
+    loading: 'lazy',
+    onError: (e) => {
+      const el = e.currentTarget;
+      if (!el.dataset.fb) {
+        el.dataset.fb = '1';
+        el.src = FALLBACK[key];
+      }
+    },
+    ...extra
+  };
+}
 
 const FAQS = [
   {
@@ -94,8 +134,9 @@ export default function Landing() {
     <>
       <Navbar />
       <main>
-        {/* HERO — full-bleed HD background */}
-        <header className="hero-bg" style={{ backgroundImage: `url(${IMG.hero})` }}>
+        {/* HERO — real photography, full-bleed background */}
+        <header className="hero-bg">
+          <img {...pic('hero', 'African woman carrying water containers home', 'hero-bg-img', { loading: 'eager' })} />
           <div className="hero-shade" />
           <div className="container hero-inner">
             <Reveal>
@@ -154,7 +195,7 @@ export default function Landing() {
             <div className="prob-grid">
               <Reveal>
                 <article className="prob-card">
-                  <img src={IMG.burst} alt="Technician repairing a leaking pipe" loading="lazy" />
+                  <img {...pic('leak', 'Plumber repairing a leaking pipe with a wrench')} />
                   <div className="prob-body">
                     <h3>Leaks run for weeks, unseen</h3>
                     <p>Bursts flood roads while slow underground leaks quietly drain tanks and inflate bills. Reports die in chat groups and never reach the person with the wrench.</p>
@@ -163,7 +204,7 @@ export default function Landing() {
               </Reveal>
               <Reveal delay={120}>
                 <article className="prob-card">
-                  <img src={IMG.wave} alt="Water running low over dark stone" loading="lazy" />
+                  <img {...pic('dry', 'Girl carrying a water container at sunset in Turkana, Kenya')} />
                   <div className="prob-body">
                     <h3>Tanks empty overnight</h3>
                     <p>Schools and clinics discover at dawn that the roof tank hit zero. Kitchens close, toilets lock, and the day&rsquo;s programme collapses — with no warning the evening before.</p>
@@ -172,7 +213,7 @@ export default function Landing() {
               </Reveal>
               <Reveal delay={240}>
                 <article className="prob-card">
-                  <img src={IMG.glass} alt="Glass of clear drinking water" loading="lazy" />
+                  <img {...pic('unsafe', 'Child drawing water from a village hand pump')} />
                   <div className="prob-body">
                     <h3>Unsafe water looks fine</h3>
                     <p>Blended borehole water can spike in dissolved solids or cloudiness after rain. Without live purity checks, children drink it for days before anyone tests a sample.</p>
@@ -204,7 +245,7 @@ export default function Landing() {
             </div>
             <div className="split">
               <Reveal>
-                <img src={IMG.tech} alt="Water technician inspecting equipment" loading="lazy" />
+                <img {...pic('tech', 'Technician fitting water pipes')} />
               </Reveal>
               <Reveal delay={120}>
                 <div>
@@ -246,7 +287,8 @@ export default function Landing() {
         </div>
 
         {/* FULL-BLEED BACKGROUND BAND */}
-        <section className="band-bg" style={{ backgroundImage: `url(${IMG.river})` }}>
+        <section className="band-bg">
+          <img {...pic('band', 'Mother and child with household water containers', 'band-bg-img')} />
           <div className="band-shade" />
           <div className="container band-inner">
             <Reveal>
@@ -269,25 +311,25 @@ export default function Landing() {
             <div className="serve-grid">
               <Reveal>
                 <div className="serve-card">
-                  <img src={IMG.river} alt="Clean river water" loading="lazy" />
+                  <img {...pic('schools', 'Teacher with students in an African classroom')} />
                   <div><h3>Schools</h3><p>Keep kitchens and dormitories supplied, and prove water safety to parents and boards.</p></div>
                 </div>
               </Reveal>
               <Reveal delay={100}>
                 <div className="serve-card">
-                  <img src={IMG.glass} alt="Safe drinking water" loading="lazy" />
+                  <img {...pic('hospitals', 'Doctor standing in a clinic corridor')} />
                   <div><h3>Hospitals and clinics</h3><p>Guarantee sterile, uninterrupted supply for wards, theatres and laboratories.</p></div>
                 </div>
               </Reveal>
               <Reveal delay={200}>
                 <div className="serve-card">
-                  <img src={IMG.hero} alt="Water storage at sunset" loading="lazy" />
+                  <img {...pic('estates', 'Woman with household water containers at home')} />
                   <div><h3>Estates and apartments</h3><p>Share fairly during rationing, split bills honestly, and fix riser leaks fast.</p></div>
                 </div>
               </Reveal>
               <Reveal delay={300}>
                 <div className="serve-card">
-                  <img src={IMG.tech} alt="Utility technician at work" loading="lazy" />
+                  <img {...pic('utilities', 'Nairobi city skyline, Kenya')} />
                   <div><h3>Utilities and vendors</h3><p>Cut non-revenue water, prioritise bursts by evidence, and answer the public with data.</p></div>
                 </div>
               </Reveal>

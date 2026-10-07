@@ -61,7 +61,12 @@ export default function Register() {
         </button>
         <p>Already registered? <Link to="/login" style={{ fontWeight: 800, color: '#0b5fa5' }}>Sign in</Link></p>
       </form>
-      <img className="auth-img" src="https://images.unsplash.com/photo-1500375592092-40eb2168fd21?q=80&w=1200&auto=format&fit=crop" alt="Clean water splash" />
+      <img
+        className="auth-img"
+        src="https://images.pexels.com/photos/30253169/pexels-photo-30253169.jpeg?auto=compress&cs=tinysrgb&w=1200"
+        onError={(e) => { if (!e.currentTarget.dataset.fb) { e.currentTarget.dataset.fb = '1'; e.currentTarget.src = 'https://images.unsplash.com/photo-1500375592092-40eb2168fd21?q=80&w=1200&auto=format&fit=crop'; } }}
+        alt="Mother and child with household water containers"
+      />
     </div>
   );
 }
