@@ -26,15 +26,20 @@ router.get('/', authRequired, async (req, res) => {
 
 // POST /api/reports
 router.post('/', authRequired, async (req, res) => {
-  const { category='leakage', title, description='', location='', lat=0, lng=0, photo_url='', phone='' } = req.body;
-  if (!title) return res.status(400).json({ error: 'Title required' });
-  const tri = triageReport({ category, title, description });
-  const r = await query(
-    `INSERT INTO reports(reporter_id,reporter_name,phone,category,title,description,location,lat,lng,photo_url,priority,ai_triage)
-     VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-    [req.user.id, req.user.name, phone, category, title, description, location, lat, lng, photo_url, tri.priority, `${tri.note} Checklist: ${tri.checklist.join('; ')}`]
-  );
-  res.status(201).json(r.rows[0]);
+  try {
+    const { category='leakage', title, description='', location='', lat=0, lng=0, photo_url='', phone='' } = req.body;
+    if (!title) return res.status(400).json({ error: 'Title required' });
+    const tri = triageReport({ category, title, description });
+    const r = await query(
+      `INSERT INTO reports(reporter_id,reporter_name,phone,category,title,description,location,lat,lng,photo_url,priority,ai_triage)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [req.user.id, req.user.name, phone, category, title, description, location, lat, lng, photo_url, tri.priority, `${tri.note} Checklist: ${tri.checklist.join('; ')}`]
+    );
+    res.status(201).json(r.rows[0]);
+  } catch (e) {
+    console.error('[reports/create]', e.code || '', e.message);
+    res.status(503).json({ error: 'Could not send your report right now. Please wait a moment and try again.' });
+  }
 });
 
 // PATCH /api/reports/:id  {status, assigned_to, priority}
@@ -58,6 +63,23 @@ router.patch('/:id', authRequired, async (req, res) => {
   }
   if (status === 'resolved') {
     await query(`UPDATE jobs SET status='done', completed_at=NOW() WHERE report_id=$1 AND status != 'done'`, [req.params.id]);
+  }
+  // Keep the reporter informed automatically — visible in their thread + inbox.
+  try {
+    if ((status === 'assigned' && assigned_to) || (assigned_to && status !== 'resolved')) {
+      const t = await query('SELECT name FROM users WHERE id=$1', [assigned_to]);
+      const techName = t.rows[0]?.name || 'a technician';
+      await query(`INSERT INTO messages(sender_id, receiver_id, report_id, body) VALUES($1,$2,$3,$4)`,
+        [req.user.id, rep.reporter_id, req.params.id, `Good news on "${rep.title}": ${techName} has been assigned and will take it from here.`]);
+    } else if (status === 'resolved') {
+      await query(`INSERT INTO messages(sender_id, receiver_id, report_id, body) VALUES($1,$2,$3,$4)`,
+        [req.user.id, rep.reporter_id, req.params.id, `Resolved: "${rep.title}" is marked fixed. Reply here if the problem returns.`]);
+    } else if (status === 'in_progress') {
+      await query(`INSERT INTO messages(sender_id, receiver_id, report_id, body) VALUES($1,$2,$3,$4)`,
+        [req.user.id, rep.reporter_id, req.params.id, `Work has started on "${rep.title}". You can follow progress here.`]);
+    }
+  } catch (e) {
+    console.error('[reports/notify]', e.message); // status change itself already saved
   }
   res.json(r.rows[0]);
 });

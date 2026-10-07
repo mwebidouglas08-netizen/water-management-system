@@ -4,7 +4,7 @@
 function rand(min, max) { return min + Math.random() * (max - min); }
 
 function simulateReading(prev, opts = {}) {
-  const now = new Date();
+  const now = opts.at ? new Date(opts.at) : new Date();
   const h = now.getHours() + now.getMinutes() / 60;
   // base flow curve
   let base = 0.4;

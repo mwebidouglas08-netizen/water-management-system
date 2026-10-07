@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import api from '../api/client';
+import api, { apiErrorMessage } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import DashboardShell from '../components/DashboardShell';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar } from 'recharts';
@@ -28,6 +28,8 @@ export default function UserDashboard() {
   const [thread, setThread] = useState(null);
   const [reply, setReply] = useState('');
   const [form, setForm] = useState({ category: 'leakage', title: '', description: '', location: '', phone: '' });
+  const [repMsg, setRepMsg] = useState('');
+  const [repBusy, setRepBusy] = useState(false);
   const [assist, setAssist] = useState(null);
   const [assistBusy, setAssistBusy] = useState(false);
   const [ask, setAsk] = useState('');
@@ -66,18 +68,21 @@ export default function UserDashboard() {
   };
   const loadStats = async (id, days) => {
     if (!id) return;
-    const [{ data: s }, { data: b }] = await Promise.all([
-      api.get(`/readings/${id}/stats?days=${days}`),
-      api.get(`/readings/${id}/summary`)
-    ]);
-    setStats(s); setBrief(b);
+    try {
+      const [{ data: s }, { data: b }] = await Promise.all([
+        api.get(`/readings/${id}/stats?days=${days}`),
+        api.get(`/readings/${id}/summary`)
+      ]);
+      setStats(s); setBrief(b);
+    } catch { /* analytics retries on next poll; charts already live */ }
   };
 
   useEffect(() => { loadDevices(); loadRest(); }, []);
   useEffect(() => {
     if (!devId) return;
     loadLive(devId); loadStats(devId, statsDays);
-    const t = setInterval(() => loadLive(devId), 20000);
+    // Keep everything conversation-fresh: readings, tickets, inbox, alerts.
+    const t = setInterval(() => { loadLive(devId); loadStats(devId, statsDays); loadRest(); }, 20000);
     return () => clearInterval(t);
   }, [devId]);
   useEffect(() => { if (devId) loadStats(devId, statsDays); }, [statsDays]);
@@ -85,9 +90,19 @@ export default function UserDashboard() {
   const markRead = async (id) => { await api.patch(`/readings/alerts/${id}/read`); loadRest(); };
   const submitReport = async (e) => {
     e.preventDefault();
-    await api.post('/reports', form);
-    setForm({ category: 'leakage', title: '', description: '', location: '', phone: '' });
-    loadRest();
+    if (repBusy) return;
+    setRepMsg(''); setRepBusy(true);
+    try {
+      const { data } = await api.post('/reports', form);
+      setRepMsg(`Sent successfully — priority ${data.priority}, reference ${String(data.id).slice(0, 8)}. A technician will be assigned; watch this ticket below.`);
+      setForm({ category: 'leakage', title: '', description: '', location: '', phone: '' });
+      setAssist(null);
+      loadRest();
+    } catch (err) {
+      setRepMsg(apiErrorMessage(err, 'Could not send your report. Check connection and try again.'));
+    } finally {
+      setRepBusy(false);
+    }
   };
   const addDevice = async (e) => {
     e.preventDefault();
@@ -257,9 +272,10 @@ export default function UserDashboard() {
               <div className="grid grid-2"><div><label>Location</label><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /></div>
               <div><label>Phone</label><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div></div>
               {assist && <div className="assist"><b>AI pre-check:</b> <span className={`badge ${badge(assist.priority)}`}>{assist.priority}</span><p>{assist.tip}</p></div>}
+              {repMsg && <div className="form-alert ok">{repMsg}</div>}
               <div className="row-btns">
                 <button type="button" className="btn btn-ghost" onClick={analyzeReport} disabled={assistBusy}>{assistBusy ? 'Analyzing…' : 'Analyze with AI'}</button>
-                <button type="submit" className="btn btn-primary">Send report</button>
+                <button type="submit" className="btn btn-primary" disabled={repBusy}>{repBusy ? 'Sending…' : 'Send report'}</button>
               </div>
             </form>
           </div>
