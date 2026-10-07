@@ -5,14 +5,13 @@ const { authRequired } = require('../middleware/auth');
 
 const router = express.Router();
 
-// GET /api/devices (own devices; admin/tech see more via admin routes)
+// GET /api/devices (own devices; technicians + admins see all site devices)
 router.get('/', authRequired, async (req, res) => {
-  const r = await query('SELECT * FROM devices WHERE user_id=$1 ORDER BY created_at DESC', [req.user.id]);
-  // admin sees all
-  if (req.user.role === 'admin') {
-    const all = await query('SELECT d.*, u.name as owner FROM devices d LEFT JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC LIMIT 200');
+  if (req.user.role === 'admin' || req.user.role === 'technician') {
+    const all = await query('SELECT d.*, u.name as owner, u.location FROM devices d LEFT JOIN users u ON u.id=d.user_id ORDER BY d.created_at DESC LIMIT 200');
     return res.json(all.rows);
   }
+  const r = await query('SELECT * FROM devices WHERE user_id=$1 ORDER BY created_at DESC', [req.user.id]);
   res.json(r.rows);
 });
 
@@ -27,6 +26,18 @@ router.post('/', authRequired, async (req, res) => {
     [req.user.id, name, site, key, type, capacity_liters, lat, lng]
   );
   res.status(201).json(r.rows[0]);
+});
+
+// POST /api/devices/demo — one-tap demo data for accounts with empty dashboards
+router.post('/demo', authRequired, async (req, res) => {
+  try {
+    const { provisionDemoDevice } = require('../services/provision');
+    const dev = await provisionDemoDevice(req.user.id);
+    res.status(201).json(dev);
+  } catch (e) {
+    console.error('[devices/demo]', e.message);
+    res.status(503).json({ error: 'Could not create demo data. Try again in a moment.' });
+  }
 });
 
 // DELETE /api/devices/:id

@@ -1,4 +1,5 @@
 const express = require('express');
+const { authRequired } = require('../middleware/auth');
 const router = express.Router();
 
 // POST /api/chat { message } — Daggy rule-based brain (works offline, no API key needed)
@@ -28,8 +29,7 @@ function helpReply() {
   return `Quick tour: 1) The home page explains the water problem and the approach 2) Register or sign in 3) The user dashboard shows live gauges, charts, insights and reports 4) The technician dashboard holds the inbox, diagnosis helper and jobs 5) The admin dashboard covers users, ticket assignment and analytics. Tell me where you are stuck and I will walk you through it.`;
 }
 
-router.post('/', (req, res) => {
-  const msg = (req.body.message || '').toLowerCase().trim();
+router.post('/', (req, res) => {  const msg = (req.body.message || '').toLowerCase().trim();
   if (!msg) return res.json({ reply: 'Hello. Ask me anything about MajiSafe and I will point you in the right direction.' });
   for (const r of RULES) {
     if (r.k.some((k) => msg.includes(k))) return res.json({ reply: r.a, source: 'daggy-rules-v2' });
@@ -40,6 +40,47 @@ router.post('/', (req, res) => {
   if (GREETING.test(msg)) return res.json({ reply: greetingReply(), source: 'daggy-rules-v2' });
   if (HELP.test(msg)) return res.json({ reply: helpReply(), source: 'daggy-rules-v2' });
   res.json({ reply: `I do not have that exact answer yet, but I can help with leaks and bursts, shortage forecasts, purity scores, filing reports, the technician inbox, admin approvals and the IoT kit. Try: "how do I report a leak?"` });
+});
+
+// POST /api/chat/device { deviceId, question } — answers about YOUR live water
+// using real readings (authed; device must belong to the user).
+router.post('/device', authRequired, async (req, res) => {
+  try {
+    const { query } = require('../db');
+    const { purityScore, detectLeak, shortageForecast } = require('../services/ai');
+    const { deviceId, question = '' } = req.body;
+    const d = await query('SELECT * FROM devices WHERE id=$1', [deviceId]);
+    const dev = d.rows[0];
+    if (!dev) return res.status(404).json({ reply: 'I cannot find that device on your account.' });
+    if (req.user.role === 'user' && dev.user_id !== req.user.id)
+      return res.status(403).json({ reply: 'That device belongs to a different account.' });
+    const latest = (await query('SELECT * FROM readings WHERE device_id=$1 ORDER BY ts DESC LIMIT 1', [dev.id])).rows[0];
+    if (!latest) return res.json({ reply: `${dev.name} has no readings yet. Readings appear within a minute of the sensor posting.` });
+    const recent = (await query('SELECT * FROM readings WHERE device_id=$1 ORDER BY ts DESC LIMIT 60', [dev.id])).rows;
+    const purity = purityScore(latest);
+    const leak = detectLeak(recent);
+    const shortage = shortageForecast(latest, dev.capacity_liters);
+    const q = question.toLowerCase();
+    let reply;
+    if (/safe|drink|purity|quality|tds|turb/.test(q)) {
+      reply = `Right now ${dev.name} scores ${purity.score} out of 100 (${purity.grade}). TDS is ${latest.tds_ppm} ppm, turbidity ${latest.turbidity_ntu} NTU, pH ${latest.ph}. ${purity.advice}`;
+    } else if (/run out|empty|shortage|remain|left|refill|days/.test(q)) {
+      reply = `${dev.name} holds about ${Number(latest.volume_liters).toFixed(0)} litres (${Number(latest.level_percent).toFixed(0)} percent). ${shortage.msg}`;
+    } else if (/leak|burst|loss|drip/.test(q)) {
+      reply = leak.leak
+        ? `Yes — this looks like a leak on ${dev.name}. ${leak.reason} ${leak.advice}`
+        : `No leak signature on ${dev.name} right now. ${leak.reason}`;
+    } else if (/use|usage|consum|bill|cost/.test(q)) {
+      const avg = recent.length ? recent.reduce((a, r) => a + Number(r.flow_lpm), 0) / recent.length : 0;
+      reply = `Recent average draw on ${dev.name} is about ${avg.toFixed(1)} litres per minute, roughly ${Math.round(avg * 1440).toLocaleString()} litres a day. Open Analytics and Bills for the full breakdown and cost estimate.`;
+    } else {
+      reply = `${dev.name}: ${Number(latest.level_percent).toFixed(0)} percent full (${Number(latest.volume_liters).toFixed(0)} L), flow ${Number(latest.flow_lpm).toFixed(1)} L/min, purity ${purity.score}/100 (${purity.grade}), ${shortage.daysLeft} days remaining. ${leak.leak ? leak.reason : 'No leaks detected.'} Ask me if the water is safe, whether you will run out, or about leaks.`;
+    }
+    res.json({ reply, source: 'daggy-device-v1' });
+  } catch (e) {
+    console.error('[chat/device]', e.message);
+    res.status(503).json({ reply: 'I cannot reach your live data right now. Try again in a moment.' });
+  }
 });
 
 module.exports = router;

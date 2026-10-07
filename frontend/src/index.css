@@ -352,3 +352,13 @@ th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #e2e8f0; 
 .thread-form { display: flex; gap: 8px; margin-top: 10px; }
 .kyc { border: 1.5px solid var(--line); border-radius: 14px; padding: 6px 16px 16px; margin-top: 14px; background: #f8fbfe; }
 .kyc legend { font-weight: 800; color: var(--blue-900); padding: 0 8px; }
+
+/* ---------- verification lock + AI bits ---------- */
+.lock-card { border-left: 5px solid var(--amber); }
+.lock-steps { margin: 12px 0; padding-left: 22px; display: grid; gap: 8px; color: #3c5068; }
+.lock-steps .done { text-decoration: line-through; opacity: .7; }
+.lock-steps .now { font-weight: 800; color: var(--blue-900); }
+.answer { background: #e2eefa; border-radius: 12px; padding: 12px 14px; margin-top: 10px; font-size: 14.5px; }
+.assist { background: #f0f9ff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-top: 10px; font-size: 14.5px; }
+.assist p { margin: 6px 0 0; color: #3c5068; }
+.empty-demo { text-align: center; padding: 18px; background: #f8fbfe; border: 1.5px dashed var(--line); border-radius: 14px; margin-bottom: 14px; }

@@ -28,7 +28,13 @@ export default function UserDashboard() {
   const [thread, setThread] = useState(null);
   const [reply, setReply] = useState('');
   const [form, setForm] = useState({ category: 'leakage', title: '', description: '', location: '', phone: '' });
+  const [assist, setAssist] = useState(null);
+  const [assistBusy, setAssistBusy] = useState(false);
+  const [ask, setAsk] = useState('');
+  const [askBusy, setAskBusy] = useState(false);
+  const [answer, setAnswer] = useState('');
   const [newDevice, setNewDevice] = useState({ name: '', site: 'Main Tank', capacity_liters: 10000 });
+  const [demoBusy, setDemoBusy] = useState(false);
 
   const loadDevices = async () => {
     const { data } = await api.get('/devices');
@@ -80,6 +86,29 @@ export default function UserDashboard() {
   const delDevice = async (id) => {
     if (!window.confirm('Remove this device and its readings?')) return;
     await api.delete(`/devices/${id}`); loadDevices();
+  };
+  const loadDemo = async () => {
+    setDemoBusy(true);
+    try { const { data } = await api.post('/devices/demo'); await loadDevices(); setDevId(data.id); }
+    finally { setDemoBusy(false); }
+  };
+  const analyzeReport = async () => {
+    if (!form.title && !form.description) return;
+    setAssistBusy(true);
+    try {
+      const { data } = await api.post('/reports/assist', { title: form.title, description: form.description, category: form.category });
+      setAssist(data);
+    } finally { setAssistBusy(false); }
+  };
+  const askDevice = async (q) => {
+    const question = (q ?? ask).trim();
+    if (!question || !devId || askBusy) return;
+    setAskBusy(true); setAnswer('');
+    try {
+      const { data } = await api.post('/chat/device', { deviceId: devId, question });
+      setAnswer(data.reply);
+    } catch { setAnswer('Live answer unavailable — try again in a moment.'); }
+    finally { setAskBusy(false); }
   };
   const openThread = async (rep) => {
     const { data } = await api.get('/reports/inbox/all');
@@ -136,6 +165,19 @@ export default function UserDashboard() {
           </div>
 
           {brief && <div className="card brief"><h4>AI briefing — {brief.headline}</h4>{brief.paragraphs.map((p, i) => <p key={i}>{p}</p>)}{brief.tips.length > 0 && <><b>Recommended next:</b><ul>{brief.tips.map((t, i) => <li key={i}>{t}</li>)}</ul></>}</div>}
+
+          <div className="card"><h4>Ask about this device</h4>
+            <p className="muted">Daggy answers from your live readings — try “Is my water safe?” or “Will I run out this week?”</p>
+            <div className="row-btns">
+              {['Is my water safe to drink?', 'Will I run out of water?', 'Do I have a leak?', 'How much water do we use?'].map((q) => (
+                <button key={q} type="button" className="btn btn-ghost" onClick={() => askDevice(q)}>{q}</button>))}
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); askDevice(); setAsk(''); }} className="thread-form">
+              <input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="Ask anything about this tank…" />
+              <button className="btn btn-primary" type="submit" disabled={askBusy}>{askBusy ? '…' : 'Ask'}</button>
+            </form>
+            {answer && <p className="answer">{answer}</p>}
+          </div>
 
           <div className="grid grid-2">
             <div className="card"><h4>Flow — last 24 hours</h4>
@@ -199,7 +241,11 @@ export default function UserDashboard() {
               <label>Description</label><textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="What, where, since when…" />
               <div className="grid grid-2"><div><label>Location</label><input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} /></div>
               <div><label>Phone</label><input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div></div>
-              <button type="submit" className="btn btn-primary" style={{ marginTop: 12 }}>Send report</button>
+              {assist && <div className="assist"><b>AI pre-check:</b> <span className={`badge ${badge(assist.priority)}`}>{assist.priority}</span><p>{assist.tip}</p></div>}
+              <div className="row-btns">
+                <button type="button" className="btn btn-ghost" onClick={analyzeReport} disabled={assistBusy}>{assistBusy ? 'Analyzing…' : 'Analyze with AI'}</button>
+                <button type="submit" className="btn btn-primary">Send report</button>
+              </div>
             </form>
           </div>
           <div className="card"><h4>My tickets</h4>
@@ -227,6 +273,11 @@ export default function UserDashboard() {
 
       {tab === 'devices' && (
         <div className="card"><h4>My sensor devices</h4>
+          {!devices.length && (
+            <div className="empty-demo">
+              <p>No devices yet. Load a demo tank with a full day of readings to explore every feature.</p>
+              <button className="btn btn-primary" onClick={loadDemo} disabled={demoBusy}>{demoBusy ? 'Loading demo data…' : 'Load demo data'}</button>
+            </div>)}
           <table><thead><tr><th>Name</th><th>Site</th><th>Device key</th><th>Capacity</th><th></th></tr></thead><tbody>
             {devices.map((d) => <tr key={d.id}><td>{d.name}</td><td>{d.site}</td><td><code>{d.device_key}</code></td><td>{d.capacity_liters} L</td><td><button className="link-btn" onClick={() => delDevice(d.id)}>Remove</button></td></tr>)}
           </tbody></table>

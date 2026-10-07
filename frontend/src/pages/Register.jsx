@@ -22,8 +22,9 @@ export default function Register() {
     try {
       const data = await register({ ...f, email: f.email.trim() });
       if (data.token) {
+        if (data.message) setMsg(data.message);
         const u = data.user;
-        nav(u.role === 'admin' ? '/admin' : u.role === 'technician' ? '/tech' : '/app');
+        setTimeout(() => nav(u.role === 'admin' ? '/admin' : u.role === 'technician' ? '/tech' : '/app'), data.message ? 1800 : 0);
       } else {
         setMsg(data.message || 'Application received. Your account stays unverified until an admin reviews your documents — you will sign in once approved.');
       }

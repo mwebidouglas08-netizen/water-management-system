@@ -5,12 +5,12 @@ const { triageReport } = require('../services/ai');
 
 const router = express.Router();
 
-// GET /api/reports?status=&mine=1
+// GET /api/reports?status=&mine=1 (regular users only ever see their own)
 router.get('/', authRequired, async (req, res) => {
   const { status, mine } = req.query;
   let sql = `SELECT r.*, u.name as tech_name FROM reports r LEFT JOIN users u ON u.id=r.assigned_to ORDER BY r.created_at DESC LIMIT 200`;
   let params = [];
-  if (mine === '1') {
+  if (mine === '1' || req.user.role === 'user') {
     sql = `SELECT r.*, u.name as tech_name FROM reports r LEFT JOIN users u ON u.id=r.assigned_to WHERE r.reporter_id=$1 ORDER BY r.created_at DESC LIMIT 200`;
     params = [req.user.id];
   } else if (status) {
@@ -43,9 +43,12 @@ router.patch('/:id', authRequired, async (req, res) => {
   const cur = await query('SELECT * FROM reports WHERE id=$1', [req.params.id]);
   if (!cur.rows.length) return res.status(404).json({ error: 'Not found' });
   const rep = cur.rows[0];
-  // owner can only view; tech/admin can update. reporter can mark resolved? allow.
-  const allowed = req.user.role === 'admin' || req.user.role === 'technician' || rep.reporter_id === req.user.id;
+  // Reporters manage their own tickets (e.g. mark resolved); only
+  // technicians/admins may (re)assign tickets to someone.
+  const canAssign = req.user.role === 'admin' || req.user.role === 'technician';
+  const allowed = canAssign || rep.reporter_id === req.user.id;
   if (!allowed) return res.status(403).json({ error: 'Forbidden' });
+  if (assigned_to && !canAssign) return res.status(403).json({ error: 'Only technicians or admins can assign tickets.' });
   const r = await query(
     `UPDATE reports SET status=COALESCE($2,status), assigned_to=COALESCE($3,assigned_to), priority=COALESCE($4,priority), updated_at=NOW() WHERE id=$1 RETURNING *`,
     [req.params.id, status || null, assigned_to || null, priority || null]
@@ -92,6 +95,19 @@ router.post('/message/direct', authRequired, async (req, res) => {
 router.patch('/inbox/:id/read', authRequired, async (req, res) => {
   await query('UPDATE messages SET is_read=true WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
+});
+
+// POST /api/reports/assist {title, description, category} — AI pre-check while filing
+router.post('/assist', authRequired, async (req, res) => {
+  const { title = '', description = '', category = 'leakage' } = req.body;
+  if (!title && !description) return res.status(400).json({ error: 'Describe the problem first.' });
+  const tri = triageReport({ category, title, description });
+  res.json({
+    priority: tri.priority,
+    cause: tri.cause,
+    checklist: tri.checklist,
+    tip: `${tri.note} Filing under "${category}" routes this to the right technicians. Add the exact location and since-when for a faster fix.`
+  });
 });
 
 module.exports = router;

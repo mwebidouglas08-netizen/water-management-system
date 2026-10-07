@@ -4,6 +4,22 @@ const { authRequired, roleRequired } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Unverified (pending) technicians hold a valid token for the locked
+// dashboard, but every technician feature checks live DB status —
+// approval unlocks the API instantly without needing a fresh login.
+async function verifiedRequired(req, res, next) {
+  if (req.user.role === 'admin') return next();
+  try {
+    const r = await query('SELECT status FROM users WHERE id=$1', [req.user.id]);
+    if (!r.rows.length || r.rows[0].status !== 'active')
+      return res.status(403).json({ error: 'Account unverified. Technician features unlock after admin approval.' });
+    next();
+  } catch {
+    return res.status(503).json({ error: 'Try again in a moment.' });
+  }
+}
+router.use(authRequired, roleRequired('technician', 'admin'), verifiedRequired);
+
 // GET /api/tech/overview — KPIs + assigned jobs + open pool
 router.get('/overview', authRequired, roleRequired('technician', 'admin'), async (req, res) => {
   const techId = req.user.role === 'technician' ? req.user.id : null;

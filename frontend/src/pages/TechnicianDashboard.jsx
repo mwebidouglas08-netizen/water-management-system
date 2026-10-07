@@ -8,16 +8,40 @@ export default function TechnicianDashboard() {
   const [tab, setTab] = useState('jobs');
   const [ov, setOv] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [checking, setChecking] = useState(false);
   const [diag, setDiag] = useState({ description: '', category: 'leakage' });
   const [result, setResult] = useState(null);
   const [reply, setReply] = useState({});
   const [msg, setMsg] = useState({ receiver: '', body: '', report: '' });
 
-  const load = async () => {
-    const [{ data }, { data: me }] = await Promise.all([api.get('/tech/overview'), api.get('/auth/me')]);
-    setOv(data); setProfile(me);
+  const checkProfile = async () => {
+    const { data: me } = await api.get('/auth/me');
+    setProfile(me);
+    return me;
   };
-  useEffect(() => { load(); const t = setInterval(load, 25000); return () => clearInterval(t); }, []);
+  const load = async () => {
+    const me = await checkProfile();
+    if (me.status === 'active') {
+      const { data } = await api.get('/tech/overview');
+      setOv(data);
+    }
+  };
+  useEffect(() => {
+    load();
+    const t = setInterval(async () => {
+      // Re-check verification so approval unlocks instantly, no re-login needed.
+      const me = await checkProfile().catch(() => null);
+      if (me && me.status === 'active') {
+        api.get('/tech/overview').then(({ data }) => setOv(data)).catch(() => {});
+      }
+    }, 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  const recheck = async () => {
+    setChecking(true);
+    try { await load(); } finally { setChecking(false); }
+  };
 
   const update = async (id, patch) => { await api.patch(`/reports/${id}`, patch); load(); };
   const diagnose = async (e) => {
@@ -41,6 +65,7 @@ export default function TechnicianDashboard() {
     setMsg({ receiver: '', body: '', report: '' });
   };
 
+  const verified = profile?.status === 'active';
   const threads = ov?.threads || [];
   const byReport = {};
   threads.forEach((m) => { const k = m.report_id || 'direct'; (byReport[k] = byReport[k] || []).push(m); });
@@ -52,6 +77,45 @@ export default function TechnicianDashboard() {
     { key: 'devices', label: 'Site devices', icon: '●' },
     { key: 'profile', label: 'My profile', icon: '☺' }
   ];
+
+  // ---- Locked view: redirected here on signup, features inaccessible until verified
+  if (profile && !verified) {
+    return (
+      <DashboardShell
+        brand="Technician Workspace"
+        org={user?.name}
+        items={[{ key: 'status', label: 'Verification status', icon: '◉' }]}
+        active="status" onNav={() => {}} onLogout={logout}
+        badge={<span className="badge b-amber">Unverified</span>}
+      >
+        <div className="grid">
+          <div className="card lock-card">
+            <h3>Application under review</h3>
+            <p>Thanks, {profile.name}. Your technician application was received and is waiting for admin verification. Jobs, inbox, diagnosis and site devices unlock automatically the moment you are approved — no need to sign in again.</p>
+            <ol className="lock-steps">
+              <li className="done">Application + documents submitted</li>
+              <li className={profile.status === 'pending' ? 'now' : ''}>Admin reviews your ID and certificates</li>
+              <li>Account verified — all features unlock</li>
+            </ol>
+            <div className="row-btns">
+              <button className="btn btn-primary" onClick={recheck} disabled={checking}>
+                {checking ? 'Checking…' : 'Check approval status'}
+              </button>
+            </div>
+            <p className="muted">This page refreshes itself every 30 seconds. Keep it open after contacting the admin.</p>
+          </div>
+          <div className="card"><h4>What you submitted</h4>
+            <table><tbody>
+              <tr><td><b>National ID</b></td><td>{profile.id_number || '—'}</td></tr>
+              <tr><td><b>Specialization</b></td><td>{profile.specialization || '—'}</td></tr>
+              <tr><td><b>Experience</b></td><td>{profile.experience_years} yrs</td></tr>
+              <tr><td><b>Certifications</b></td><td>{profile.cert_details || '—'}</td></tr>
+            </tbody></table>
+          </div>
+        </div>
+      </DashboardShell>
+    );
+  }
 
   return (
     <DashboardShell
