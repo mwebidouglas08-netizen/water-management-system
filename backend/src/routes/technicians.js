@@ -20,7 +20,13 @@ router.get('/overview', authRequired, roleRequired('technician', 'admin'), async
   );
   const inbox = await query(`SELECT count(*) c FROM messages WHERE receiver_id=$1 AND is_read=false`, [req.user.id]);
   const devices = await query(`SELECT d.*, u.name as owner, u.location FROM devices d LEFT JOIN users u ON u.id=d.user_id ORDER BY d.last_seen DESC LIMIT 50`);
-  res.json({ assigned: assigned.rows, openPool: openPool.rows, doneCount: Number(done.rows[0].c), unread: Number(inbox.rows[0].c), devices: devices.rows });
+  const threads = await query(
+    `SELECT m.*, s.name as sender_name, r.title as report_title FROM messages m
+     LEFT JOIN users s ON s.id=m.sender_id LEFT JOIN reports r ON r.id=m.report_id
+     WHERE m.receiver_id=$1 OR m.sender_id=$1 ORDER BY m.created_at DESC LIMIT 30`,
+    [req.user.id]
+  );
+  res.json({ assigned: assigned.rows, openPool: openPool.rows, doneCount: Number(done.rows[0].c), unread: Number(inbox.rows[0].c), devices: devices.rows, threads: threads.rows });
 });
 
 // POST /api/tech/diagnose { readings?, description, deviceName? } — AI assist

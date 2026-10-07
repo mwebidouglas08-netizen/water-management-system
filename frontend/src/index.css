@@ -303,3 +303,52 @@ th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #e2e8f0; 
 .get-steps li::before { content: counter(get, decimal-leading-zero); position: absolute; left: 22px; top: 22px; font-family: var(--font-display); font-size: 30px; font-weight: 700; color: var(--blue-500); }
 .get-steps strong { font-family: var(--font-display); font-size: 19px; color: var(--blue-950); }
 .get-steps p { margin: 6px 0 0; color: #3c5068; font-size: 15px; }
+
+/* ---------- dashboard shell ---------- */
+.dash { display: grid; grid-template-columns: 264px 1fr; min-height: 100vh; background: var(--bg); }
+.dash-side { background: var(--blue-950); color: #dbeafe; padding: 22px 16px; display: flex; flex-direction: column; gap: 6px; position: sticky; top: 0; height: 100vh; }
+.dash-side .brand { color: #fff; }
+.dash-org { color: #8fb4d1; font-size: 13.5px; margin: 2px 0 8px; }
+.dash-side .badge { align-self: flex-start; margin-bottom: 10px; }
+.dash-nav { display: flex; flex-direction: column; gap: 4px; }
+.dash-item { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 11px 14px; border-radius: 12px; border: 0; background: transparent; color: #c9def0; font-weight: 600; font-size: 15px; font-family: var(--font-body); cursor: pointer; }
+.dash-item:hover { background: rgba(255, 255, 255, .1); color: #fff; }
+.dash-item.active { background: rgba(255, 255, 255, .16); color: #fff; }
+.dash-ico { width: 22px; text-align: center; opacity: .85; }
+.dash-count { margin-left: auto; background: var(--amber); color: #451a03; font-size: 12px; font-weight: 800; border-radius: 999px; padding: 1px 9px; }
+.dash-side-foot { margin-top: auto; font-size: 12.5px; color: #6b93b3; padding: 10px 4px 0; }
+.dash-body { min-width: 0; display: flex; flex-direction: column; }
+.dash-top { display: none; align-items: center; gap: 12px; padding: 12px 16px; background: #fff; border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 30; }
+.dash-title { font-family: var(--font-display); color: var(--blue-950); font-size: 18px; }
+.dash-top-right { margin-left: auto; }
+.dash-menu { margin-left: 0; }
+.dash-main { padding: 22px; max-width: 1200px; width: 100%; margin: 0 auto; }
+.dash-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; background: #fff; border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 16px; box-shadow: var(--shadow); }
+.drawer-wrap { position: fixed; inset: 0; background: rgba(3, 22, 40, .5); z-index: 70; }
+.drawer { width: min(320px, 86vw); height: 100%; background: var(--blue-950); padding: 18px 16px; overflow-y: auto; }
+.drawer-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.drawer-head .brand { color: #fff; font-size: 18px; }
+.drawer .dash-item { color: #c9def0; }
+@media (max-width: 960px) {
+  .dash { grid-template-columns: 1fr; }
+  .dash-side { display: none; }
+  .dash-top { display: flex; }
+  .dash-main { padding: 16px 14px; }
+}
+
+/* ---------- dashboard content bits ---------- */
+.feed-row { border-bottom: 1px solid #e6eef6; padding: 12px 0; }
+.feed-row:last-child { border-bottom: 0; }
+.link-btn { background: none; border: 0; color: var(--blue-700); font-weight: 700; cursor: pointer; padding: 0; font-size: 14px; }
+.link-btn:hover { text-decoration: underline; }
+.row-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
+.row-btns .btn { padding: 9px 16px; font-size: 13.5px; }
+.row-btns select { width: auto; min-width: 170px; }
+.dash-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.brief { border-left: 5px solid var(--teal); }
+.brief h4 { margin-top: 0; }
+.thread { border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-top: 12px; background: #f8fbfe; }
+.thread .msg { margin: 8px 0; }
+.thread-form { display: flex; gap: 8px; margin-top: 10px; }
+.kyc { border: 1.5px solid var(--line); border-radius: 14px; padding: 6px 16px 16px; margin-top: 14px; background: #f8fbfe; }
+.kyc legend { font-weight: 800; color: var(--blue-900); padding: 0 8px; }

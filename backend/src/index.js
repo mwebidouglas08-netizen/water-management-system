@@ -42,9 +42,34 @@ app.use((err, req, res, next) => {
 });
 
 const HOST = '0.0.0.0';
+
+// Creates the first admin from env when none exists, so /admin is reachable
+// without manual SQL. Set ADMIN_EMAIL + ADMIN_PASSWORD on Render once.
+async function ensureAdmin() {
+  const { pool, isDbConfigured } = require('./db');
+  const email = (process.env.ADMIN_EMAIL || '').toLowerCase().trim();
+  const password = process.env.ADMIN_PASSWORD || '';
+  if (!isDbConfigured || !pool || !email || !password) return;
+  try {
+    const existing = await pool.query(`SELECT id FROM users WHERE role='admin' LIMIT 1`);
+    if (existing.rows.length) return;
+    const bcrypt = require('bcryptjs');
+    const hash = await bcrypt.hash(password, 10);
+    await pool.query(
+      `INSERT INTO users(name,email,password_hash,role,org_name,status)
+       VALUES('System Admin',$1,$2,'admin','MajiSafe HQ','active')
+       ON CONFLICT (email) DO UPDATE SET password_hash=EXCLUDED.password_hash, role='admin', status='active'`,
+      [email, hash]
+    );
+    console.log(`[boot] admin account ready for ${email}`);
+  } catch (e) {
+    console.error('[boot] ensureAdmin failed:', e.message);
+  }
+}
+
 // Listen immediately so health checks pass, then keep ensuring tables in the
 // background (free-tier Postgres is often still waking at boot).
 app.listen(PORT, HOST, () => {
   console.log(`[majisafe] API on ${HOST}:${PORT} dbConfigured=${require('./db').isDbConfigured}`);
-  require('./migrate').migrateWithRetry().catch((e) => console.error('[migrate] loop error', e.message));
+  require('./migrate').migrateWithRetry().then(ensureAdmin).catch((e) => console.error('[boot] loop error', e.message));
 });

@@ -98,4 +98,69 @@ router.patch('/alerts/:id/read', authRequired, async (req, res) => {
   res.json({ ok: true });
 });
 
+// GET /api/readings/:deviceId/stats?days=7 — daily aggregates + trend + bill estimate
+router.get('/:deviceId/stats', authRequired, async (req, res) => {
+  try {
+    const days = Math.min(60, Math.max(1, Number(req.query.days) || 7));
+    const d = await query('SELECT * FROM devices WHERE id=$1', [req.params.deviceId]);
+    if (!d.rows.length) return res.status(404).json({ error: 'No device' });
+    const perDay = (await query(
+      `SELECT date_trunc('day', ts)::date day, AVG(flow_lpm)::float avg_flow,
+              AVG(level_percent)::float avg_level, MIN(level_percent)::float min_level,
+              MAX(tds_ppm)::float max_tds, MAX(turbidity_ntu)::float max_turb, COUNT(*) samples
+       FROM readings WHERE device_id=$1 AND ts > NOW() - ($2 || ' days')::INTERVAL
+       GROUP BY 1 ORDER BY 1 ASC`,
+      [req.params.deviceId, String(days)]
+    )).rows.map((r) => ({
+      ...r,
+      litres_day: Math.round((Number(r.avg_flow) || 0) * 1440),
+      m3_day: Number((((Number(r.avg_flow) || 0) * 1440) / 1000).toFixed(2))
+    }));
+    const prev = await query(
+      `SELECT AVG(flow_lpm)::float avg_flow FROM readings
+       WHERE device_id=$1 AND ts BETWEEN NOW() - ($2 || ' days')::INTERVAL AND NOW() - (($2 || ' days')::INTERVAL / 2)`,
+      [req.params.deviceId, String(days)]
+    );
+    const cur = perDay.length ? perDay.reduce((a, r) => a + r.litres_day, 0) / perDay.length : 0;
+    const prevAvg = Number(prev.rows[0]?.avg_flow) || 0;
+    const trendPct = prevAvg > 0 ? Number((((cur / 1440 - prevAvg) / prevAvg) * 100).toFixed(1)) : 0;
+    const totalM3 = Number((perDay.reduce((a, r) => a + r.m3_day, 0)).toFixed(2));
+    const TARIFF = 55; // KES per m3 — flat planning estimate, stated in UI
+    res.json({ days, perDay, avgLitresDay: Math.round(cur), totalM3, trendPct, estBillKES: Math.round(totalM3 * TARIFF), tariffNote: `Estimated at a flat KES ${TARIFF}/m3 for planning. Your utility tariff may differ.` });
+  } catch (e) {
+    console.error('[stats]', e.message);
+    res.status(503).json({ error: 'Analytics temporarily unavailable.' });
+  }
+});
+
+// GET /api/readings/:deviceId/summary — plain-language AI briefing for the user
+router.get('/:deviceId/summary', authRequired, async (req, res) => {
+  try {
+    const d = await query('SELECT * FROM devices WHERE id=$1', [req.params.deviceId]);
+    if (!d.rows.length) return res.status(404).json({ error: 'No device' });
+    const dev = d.rows[0];
+    const latest = (await query('SELECT * FROM readings WHERE device_id=$1 ORDER BY ts DESC LIMIT 1', [dev.id])).rows[0];
+    if (!latest) return res.json({ headline: 'No readings yet.', paragraphs: [], tips: [] });
+    const recent = (await query('SELECT * FROM readings WHERE device_id=$1 ORDER BY ts DESC LIMIT 60', [dev.id])).rows;
+    const purity = purityScore(latest);
+    const leak = detectLeak(recent);
+    const shortage = shortageForecast(latest, dev.capacity_liters);
+    const paragraphs = [];
+    paragraphs.push(`${dev.name} holds about ${Number(latest.volume_liters).toFixed(0)} litres (${Number(latest.level_percent).toFixed(0)} percent of ${dev.capacity_liters} litres). At recent use this is ${shortage.msg}`);
+    paragraphs.push(`Water quality scores ${purity.score} out of 100 (${purity.grade}). ${purity.advice}`);
+    paragraphs.push(leak.leak ? `Attention: ${leak.reason} ${leak.advice}` : `No leak signature right now. ${leak.reason}`);
+    const tips = [];
+    if (shortage.level === 'critical' || shortage.level === 'high') tips.push('Schedule a refill or bowser within 24 hours and ration non-essential use first.');
+    if (purity.score < 70) tips.push('Clean the tank and service filters this week, then compare the next score.');
+    if (!leak.leak) tips.push('Keep the habit: glance at night flow once a week — anything above 2 litres per minute deserves a walk of the line.');
+    else tips.push('Read the meter tonight at 10pm and again at 5am with no use in between to confirm the leak.');
+    if (Number(latest.battery) < 30) tips.push('The sensor battery is low — recharge or swap it so monitoring never gaps.');
+    const headline = leak.burst ? 'Possible burst — act now' : leak.leak ? 'A leak is likely — investigate today' : shortage.level === 'critical' ? 'Water running out — refill now' : purity.score < 50 ? 'Water quality needs treatment' : 'Everything looks normal';
+    res.json({ headline, paragraphs, tips });
+  } catch (e) {
+    console.error('[summary]', e.message);
+    res.status(503).json({ error: 'Briefing temporarily unavailable.' });
+  }
+});
+
 module.exports = router;

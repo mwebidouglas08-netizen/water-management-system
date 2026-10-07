@@ -102,3 +102,10 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id, created_at DESC);
+
+-- Technician KYC (added after launch; safe to re-run — all IF NOT EXISTS)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS id_number VARCHAR(40) DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS specialization VARCHAR(120) DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS experience_years INTEGER DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS cert_details TEXT DEFAULT '';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS cert_url TEXT DEFAULT '';
