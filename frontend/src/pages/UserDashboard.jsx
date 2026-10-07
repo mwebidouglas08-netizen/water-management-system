@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import api from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import DashboardShell from '../components/DashboardShell';
@@ -35,11 +35,23 @@ export default function UserDashboard() {
   const [answer, setAnswer] = useState('');
   const [newDevice, setNewDevice] = useState({ name: '', site: 'Main Tank', capacity_liters: 10000 });
   const [demoBusy, setDemoBusy] = useState(false);
+  const demoTried = useRef(false);
 
   const loadDevices = async () => {
     const { data } = await api.get('/devices');
     setDevices(data);
     setDevId((cur) => cur || (data[0] && data[0].id) || '');
+    // Accounts created before demo provisioning (or with deleted devices)
+    // fill themselves automatically — the dashboard is never empty.
+    if (!data.length && !demoTried.current) {
+      demoTried.current = true;
+      try {
+        const demo = await api.post('/devices/demo');
+        const list = await api.get('/devices');
+        setDevices(list.data);
+        setDevId(demo.data.id);
+      } catch { /* user can retry from the Devices tab */ }
+    }
   };
   const loadLive = async (id) => {
     if (!id) return;

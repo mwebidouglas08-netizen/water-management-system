@@ -362,3 +362,13 @@ th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #e2e8f0; 
 .assist { background: #f0f9ff; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-top: 10px; font-size: 14.5px; }
 .assist p { margin: 6px 0 0; color: #3c5068; }
 .empty-demo { text-align: center; padding: 18px; background: #f8fbfe; border: 1.5px dashed var(--line); border-radius: 14px; margin-bottom: 14px; }
+
+/* ---------- admin command center ---------- */
+.stat { display: flex; gap: 14px; align-items: center; }
+.stat-ico { width: 46px; height: 46px; border-radius: 14px; background: linear-gradient(135deg, var(--blue-700), var(--teal)); color: #fff; display: inline-grid; place-items: center; font-size: 20px; font-weight: 800; flex-shrink: 0; }
+.card.pulse { border: 2px solid var(--amber); animation: pulseB 2s infinite; }
+@keyframes pulseB { 0%, 100% { box-shadow: var(--shadow); } 50% { box-shadow: 0 0 0 6px rgba(245, 158, 11, .22); } }
+.detail-panel { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; background: #f8fbfe; border-radius: 12px; padding: 14px 16px; }
+@media (max-width: 760px) { .detail-panel { grid-template-columns: 1fr; } }
+.detail-panel p { margin: 4px 0; }
+.doc-thumb { max-width: 220px; max-height: 160px; border-radius: 12px; border: 1px solid var(--line); object-fit: cover; }

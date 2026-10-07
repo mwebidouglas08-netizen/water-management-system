@@ -10,7 +10,7 @@ const configuredOrigins = (process.env.FRONTEND_URL || '').split(',').map((s) =>
 // Reflect the request origin when no allowlist is configured (dev / first deploy),
 // otherwise enforce the allowlist. Never send '*' together with credentials.
 app.use(cors({ origin: configuredOrigins.length ? configuredOrigins : true, credentials: true }));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '5mb' })); // room for KYC document uploads (images/PDFs as data URLs)
 app.use(morgan('dev'));
 
 app.get('/', (req, res) => res.json({ name: 'MajiSafe API', version: '1.0.0', docs: '/api/health' }));

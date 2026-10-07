@@ -10,14 +10,35 @@ export default function Register() {
   });
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [docName, setDocName] = useState('');
+  const [docErr, setDocErr] = useState('');
   const { register } = useAuth();
   const nav = useNavigate();
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const isTech = f.role === 'technician';
 
+  const onDocFile = (file) => {
+    setDocErr('');
+    if (!file) return;
+    if (file.size > 3.5 * 1024 * 1024) {
+      setDocErr('File too large — please use a photo or PDF under 3.5 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      set('cert_url', String(reader.result));
+      setDocName(`${file.name} (${Math.round(file.size / 1024)} KB attached)`);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const go = async (e) => {
     e.preventDefault();
     if (busy) return;
+    if (f.role === 'technician' && !f.cert_url) {
+      setMsg('Please attach your ID / certificate file or paste a document link so the admin can verify you.');
+      return;
+    }
     setMsg(''); setBusy(true);
     try {
       const data = await register({ ...f, email: f.email.trim() });
@@ -74,8 +95,12 @@ export default function Register() {
             </div>
             <label htmlFor="reg-cert">Certifications</label>
             <textarea id="reg-cert" rows={2} value={f.cert_details} onChange={(e) => set('cert_details', e.target.value)} placeholder="e.g. Grade II Plumbing certificate, 2021; NWSC safety training" />
-            <label htmlFor="reg-certurl">Document link (ID / certificates)</label>
-            <input id="reg-certurl" type="url" value={f.cert_url} onChange={(e) => set('cert_url', e.target.value)} placeholder="https://drive.google.com/… (shareable link to scanned documents)" />
+            <label htmlFor="reg-docfile">Upload ID / certificates (photo or PDF, max 3.5 MB) *</label>
+            <input id="reg-docfile" type="file" accept="image/*,.pdf" onChange={(e) => onDocFile(e.target.files[0])} />
+            {docName && <p className="muted">Attached: {docName}</p>}
+            {docErr && <div className="form-alert">{docErr}</div>}
+            <label htmlFor="reg-certurl">…or paste a shareable document link instead</label>
+            <input id="reg-certurl" type="url" value={f.cert_url.startsWith('data:') ? '' : f.cert_url} onChange={(e) => set('cert_url', e.target.value)} placeholder="https://drive.google.com/… (only if no file attached above)" />
           </fieldset>
         )}
 
