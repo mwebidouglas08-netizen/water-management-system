@@ -4,7 +4,10 @@ const raw = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\
 
 const api = axios.create({
   baseURL: raw + '/api',
-  timeout: 30000
+  timeout: 30000,
+  // Never serve admin/approval lists from browser cache — different devices
+  // must always see the same live data.
+  headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' }
 });
 
 api.interceptors.request.use((cfg) => {

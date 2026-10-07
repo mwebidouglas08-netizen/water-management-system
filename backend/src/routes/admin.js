@@ -7,14 +7,16 @@ router.use(authRequired, roleRequired('admin'));
 
 // GET /api/admin/overview
 router.get('/overview', async (req, res) => {
-  const [users, devs, reps, alerts] = await Promise.all([
+  const [users, devs, reps, alerts, pending, open] = await Promise.all([
     query(`SELECT role, status, count(*) c FROM users GROUP BY role, status`),
     query(`SELECT count(*) c FROM devices`),
     query(`SELECT status, count(*) c FROM reports GROUP BY status`),
-    query(`SELECT count(*) c FROM alerts WHERE created_at > NOW() - INTERVAL '7 days'`)
+    query(`SELECT count(*) c FROM alerts WHERE created_at > NOW() - INTERVAL '7 days'`),
+    query(`SELECT count(*) c FROM users WHERE role='technician' AND status='pending'`),
+    query(`SELECT count(*) c FROM reports WHERE status='open'`)
   ]);
   const totals = await query(`SELECT (SELECT count(*) FROM users) users, (SELECT count(*) FROM devices) devices, (SELECT count(*) FROM reports) reports, (SELECT count(*) FROM readings) readings`);
-  res.json({ byRole: users.rows, devices: devs.rows, reports: reps.rows, alerts7d: alerts.rows[0].c, totals: totals.rows[0] });
+  res.json({ byRole: users.rows, devices: devs.rows, reports: reps.rows, alerts7d: alerts.rows[0].c, totals: totals.rows[0], pendingCount: Number(pending.rows[0].c), openCount: Number(open.rows[0].c) });
 });
 
 // GET /api/admin/users?search=&status=pending — includes technician KYC for approvals

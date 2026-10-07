@@ -34,21 +34,47 @@ export default function AdminDashboard() {
   const [newU, setNewU] = useState({ name: '', email: '', password: 'User123!', role: 'user', org_name: '' });
   const [assign, setAssign] = useState({});
   const [repMsgs, setRepMsgs] = useState({});
+  const [loadError, setLoadError] = useState('');
 
-  const load = async () => {
-    const [o, r, d, c, t] = await Promise.all([
-      api.get('/admin/overview'), api.get('/reports'),
-      api.get('/devices'), api.get('/admin/consumption'), api.get('/reports/inbox/all')
-    ]);
-    setOv(o.data); setReports(r.data); setDevices(d.data); setThreads(t.data);
-    setConsumption(c.data.map((x) => ({ ...x, day: String(x.day).slice(0, 10), litres: Math.round((x.avg_flow || 0) * 1440) })));
-    const u = await api.get('/admin/users?search=' + encodeURIComponent(search));
-    setUsers(u.data);
-    setTechs(u.data.filter((x) => x.role === 'technician' && x.status === 'active'));
-    const p = await api.get('/admin/users?status=pending&role=technician');
-    setPending(p.data);
+  const load = async (quiet) => {
+    // Each section loads independently: one slow/failed call must never
+    // blank the approvals queue or fake an "empty" state.
+    if (!quiet) setLoadError('');
+    try {
+      const o = await api.get('/admin/overview');
+      setOv(o.data);
+    } catch (e) { if (!quiet) setLoadError(apiError(e)); }
+    try {
+      const [r, d, c, t] = await Promise.all([
+        api.get('/reports'), api.get('/devices'),
+        api.get('/admin/consumption'), api.get('/reports/inbox/all')
+      ]);
+      setReports(r.data); setDevices(d.data); setThreads(t.data);
+      setConsumption(c.data.map((x) => ({ ...x, day: String(x.day).slice(0, 10), litres: Math.round((x.avg_flow || 0) * 1440) })));
+    } catch (e) { if (!quiet) setLoadError(apiError(e)); }
+    try {
+      const u = await api.get('/admin/users?search=' + encodeURIComponent(search));
+      setUsers(u.data);
+      setTechs(u.data.filter((x) => x.role === 'technician' && x.status === 'active'));
+    } catch (e) { if (!quiet) setLoadError(apiError(e)); }
+    try {
+      const p = await api.get('/admin/users?status=pending&role=technician');
+      setPending(p.data);
+    } catch (e) { if (!quiet) setLoadError(apiError(e)); }
   };
-  useEffect(() => { load(); }, []);
+  function apiError(e) {
+    if (e.response?.status === 401 || e.response?.status === 403)
+      return 'Your session is not authorized for admin data. Sign out and sign back in as admin.';
+    if (!e.response) return 'Cannot reach the server. It may be waking up — wait 30 seconds and press Refresh.';
+    return e.response?.data?.error || 'Could not load admin data. Press Refresh.';
+  }
+  useEffect(() => {
+    load();
+    // Approvals re-check themselves so applications submitted from any
+    // device appear without a manual reload.
+    const t = setInterval(() => load(true), 30000);
+    return () => clearInterval(t);
+  }, []);
 
   const verify = async (id) => { await api.post(`/admin/users/${id}/verify`); load(); };
   const reject = async (id) => {
@@ -88,7 +114,8 @@ export default function AdminDashboard() {
 
   const filteredUsers = users.filter((u) => !roleFilter || u.role === roleFilter);
   const filteredReports = reports.filter((r) => !repFilter || r.status === repFilter);
-  const openCount = reports.filter((r) => r.status === 'open').length;
+  const openCount = ov?.openCount ?? reports.filter((r) => r.status === 'open').length;
+  const pendingCount = ov?.pendingCount ?? pending.length;
   const staleCount = devices.filter((d) => stale(d.last_seen)).length;
   const recentUsers = [...users].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5);
   const recentReports = [...reports].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 6);
@@ -97,7 +124,7 @@ export default function AdminDashboard() {
 
   const items = [
     { key: 'command', label: 'Command', icon: '◉' },
-    { key: 'approvals', label: 'Approvals', icon: '✓', count: pending.length },
+    { key: 'approvals', label: 'Approvals', icon: '✓', count: pendingCount },
     { key: 'users', label: 'Users', icon: '☺', count: users.length },
     { key: 'reports', label: 'Reports', icon: '✎', count: openCount },
     { key: 'devices', label: 'Devices', icon: '●', count: staleCount },
@@ -112,6 +139,7 @@ export default function AdminDashboard() {
       items={items} active={tab} onNav={setTab} onLogout={logout}
       badge={<span className="badge b-blue">admin</span>}
     >
+      {loadError && <div className="form-alert">{loadError} <button className="link-btn" onClick={() => load()}>Retry now</button></div>}
       {tab === 'command' && (
         <div className="grid">
           <div className="grid grid-4">
@@ -140,6 +168,10 @@ export default function AdminDashboard() {
 
       {tab === 'approvals' && (
         <div className="grid">
+          <div className="card dash-row">
+            <span><b>{pendingCount}</b> application{pendingCount === 1 ? '' : 's'} waiting <span className="muted">· auto-refreshes every 30s</span></span>
+            <button className="btn btn-ghost" onClick={() => load()}>Refresh now</button>
+          </div>
           {!pending.length && <div className="card">No pending applications. New technicians with ID documents appear here automatically.</div>}
           {pending.map((t) => (
             <div className="card" key={t.id}>
