@@ -80,4 +80,52 @@ router.get('/consumption', async (req, res) => {
   res.json(r.rows);
 });
 
+// POST /api/admin/seed-demo — one-click demo dataset: demo institution with a
+// live tank, plus sample reports so every dashboard looks composed.
+router.post('/seed-demo', async (req, res) => {
+  try {
+    const bcrypt = require('bcryptjs');
+    const { provisionDemoDevice } = require('../services/provision');
+    const { triageReport } = require('../services/ai');
+    let school = await query(`SELECT id FROM users WHERE email='demo.school@majisafe.ke'`);
+    let schoolId;
+    if (!school.rows.length) {
+      const hash = await bcrypt.hash('Demo123!', 10);
+      const u = await query(
+        `INSERT INTO users(name,email,password_hash,role,org_name,phone,location,status)
+         VALUES('Demo Academy','demo.school@majisafe.ke',$1,'user','Demo Academy','+254700000000','Nairobi','active') RETURNING id`,
+        [hash]
+      );
+      schoolId = u.rows[0].id;
+    } else {
+      schoolId = school.rows[0].id;
+    }
+    const existing = await query(`SELECT count(*) c FROM devices WHERE user_id=$1`, [schoolId]);
+    if (Number(existing.rows[0].c) >= 5)
+      return res.json({ ok: true, note: 'Demo dataset already present (5 sites max).' });
+    const n = Number(existing.rows[0].c) + 1;
+    const dev = await provisionDemoDevice(schoolId, `Demo Tank ${n}`, n === 1 ? 'Main Building' : `Annex ${n}`);
+    const tech = await query(`SELECT id FROM users WHERE role='technician' AND status='active' ORDER BY created_at LIMIT 1`);
+    const techId = tech.rows[0]?.id || null;
+    const samples = [
+      { category: 'leakage', title: 'Dripping riser in Block C bathrooms', description: 'Water runs constantly in two cubicles, floor always wet.', location: 'Block C, Demo Academy', status: 'open', assigned: null },
+      { category: 'burst', title: 'Burst main near the front gate', description: 'Water gushing across the driveway since morning.', location: 'Front gate, Demo Academy', status: techId ? 'assigned' : 'open', assigned: techId },
+      { category: 'quality', title: 'Brown water after heavy rain', description: 'Taps run brown every rainy afternoon.', location: 'Kitchen block, Demo Academy', status: 'open', assigned: null }
+    ];
+    for (const s of samples) {
+      const tri = triageReport({ category: s.category, title: s.title, description: s.description });
+      const r = await query(
+        `INSERT INTO reports(reporter_id,reporter_name,category,title,description,location,priority,ai_triage,status,assigned_to)
+         VALUES($1,'Demo Academy',$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+        [schoolId, s.category, s.title, s.description, s.location, tri.priority, tri.note, s.status, s.assigned]
+      );
+      if (s.assigned) await query(`INSERT INTO jobs(report_id, technician_id, status) VALUES($1,$2,'assigned')`, [r.rows[0].id, s.assigned]);
+    }
+    res.status(201).json({ ok: true, device: dev.device_key, note: `Demo Tank ${n} plus 3 sample reports ready.` });
+  } catch (e) {
+    console.error('[admin/seed-demo]', e.message);
+    res.status(503).json({ error: 'Demo seeding failed. Try again in a moment.' });
+  }
+});
+
 module.exports = router;

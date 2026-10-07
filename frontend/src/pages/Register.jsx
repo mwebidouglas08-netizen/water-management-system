@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, wakeServer } from '../context/AuthContext';
 import { apiErrorMessage } from '../api/client';
 
 export default function Register() {
@@ -10,12 +10,15 @@ export default function Register() {
   });
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
   const [docName, setDocName] = useState('');
   const [docErr, setDocErr] = useState('');
   const { register } = useAuth();
   const nav = useNavigate();
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
   const isTech = f.role === 'technician';
+
+  useEffect(() => { wakeServer(); }, []);
 
   const onDocFile = (file) => {
     setDocErr('');
@@ -39,9 +42,9 @@ export default function Register() {
       setMsg('Please attach your ID / certificate file or paste a document link so the admin can verify you.');
       return;
     }
-    setMsg(''); setBusy(true);
+    setMsg(''); setBusy(true); setNote('');
     try {
-      const data = await register({ ...f, email: f.email.trim() });
+      const data = await register({ ...f, email: f.email.trim() }, (n) => setNote(`Server is waking up — retrying (${n}/2)…`));
       if (data.token) {
         if (data.message) setMsg(data.message);
         const u = data.user;
@@ -52,7 +55,7 @@ export default function Register() {
     } catch (e) {
       setMsg(apiErrorMessage(e, 'Registration failed. Try a different email address.'));
     } finally {
-      setBusy(false);
+      setBusy(false); setNote('');
     }
   };
 
@@ -105,7 +108,7 @@ export default function Register() {
         )}
 
         <button type="submit" className="btn btn-primary" style={{ marginTop: 16 }} disabled={busy}>
-          {busy ? 'Creating account…' : isTech ? 'Submit for verification' : 'Create account'}
+          {busy ? (note || (isTech ? 'Submitting…' : 'Creating account…')) : isTech ? 'Submit for verification' : 'Create account'}
         </button>
         <p>Already registered? <Link to="/login" style={{ fontWeight: 800, color: '#0b5fa5' }}>Sign in</Link></p>
       </form>

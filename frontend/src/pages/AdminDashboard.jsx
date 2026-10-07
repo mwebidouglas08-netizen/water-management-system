@@ -31,6 +31,9 @@ export default function AdminDashboard() {
   const [threads, setThreads] = useState([]);
   const [detail, setDetail] = useState(null);
   const [contact, setContact] = useState('');
+  const [contactFor, setContactFor] = useState(null);
+  const [updated, setUpdated] = useState('');
+  const [seedMsg, setSeedMsg] = useState('');
   const [newU, setNewU] = useState({ name: '', email: '', password: 'User123!', role: 'user', org_name: '' });
   const [assign, setAssign] = useState({});
   const [repMsgs, setRepMsgs] = useState({});
@@ -61,6 +64,15 @@ export default function AdminDashboard() {
       const p = await api.get('/admin/users?status=pending&role=technician');
       setPending(p.data);
     } catch (e) { if (!quiet) setLoadError(apiError(e)); }
+    setUpdated(new Date().toLocaleTimeString());
+  };
+  const seedDemo = async () => {
+    setSeedMsg('Seeding demo dataset…');
+    try {
+      const { data } = await api.post('/admin/seed-demo');
+      setSeedMsg(data.note || 'Demo dataset ready.');
+      load(true);
+    } catch { setSeedMsg('Seeding failed — try again in a moment.'); }
   };
   function apiError(e) {
     if (e.response?.status === 401 || e.response?.status === 403)
@@ -100,7 +112,8 @@ export default function AdminDashboard() {
     e.preventDefault();
     if (!contact.trim()) return;
     await api.post('/reports/message/direct', { receiver_id: u.id, body: contact });
-    setContact(''); alert(`Message sent to ${u.name}.`);
+    setContact(''); setContactFor(null);
+    alert(`Message sent to ${u.name}.`);
   };
   const replyThread = async (e, reportId, receiverId) => {
     e.preventDefault();
@@ -142,6 +155,14 @@ export default function AdminDashboard() {
       {loadError && <div className="form-alert">{loadError} <button className="link-btn" onClick={() => load()}>Retry now</button></div>}
       {tab === 'command' && (
         <div className="grid">
+          <div className="card dash-row">
+            <span>Live overview {updated && <span className="muted">· updated {updated} · auto-refreshes</span>}</span>
+            <span className="row-btns">
+              <button className="btn btn-ghost" onClick={seedDemo}>Load demo dataset</button>
+              <button className="btn btn-ghost" onClick={() => load()}>Refresh</button>
+            </span>
+          </div>
+          {seedMsg && <div className="card">{seedMsg}</div>}
           <div className="grid grid-4">
             <div className="card stat"><span className="stat-ico">☺</span><div><div className="muted">Total users</div><div className="kpi">{ov?.totals.users ?? '…'}</div></div></div>
             <div className={`card stat${pending.length ? ' pulse' : ''}`}><span className="stat-ico">✓</span><div><div className="muted">Awaiting approval</div><div className="kpi">{pending.length}</div></div></div>
@@ -193,7 +214,13 @@ export default function AdminDashboard() {
               <div className="row-btns">
                 <button className="btn btn-primary" onClick={() => verify(t.id)}>Verify & unlock account</button>
                 <button className="btn btn-ghost" onClick={() => reject(t.id)}>Reject application</button>
+                <button className="btn btn-ghost" onClick={() => { setContactFor(contactFor === t.id ? null : t.id); setContact(''); }}>Contact applicant</button>
               </div>
+              {contactFor === t.id && (
+                <form onSubmit={(e) => contactUser(e, t)} className="thread-form">
+                  <input value={contact} onChange={(e) => setContact(e.target.value)} placeholder={`Write to ${t.name}…`} autoFocus />
+                  <button className="btn btn-primary" type="submit">Send</button>
+                </form>)}
               <p className="muted">Verification unlocks the technician workspace immediately — no re-login needed.</p>
             </div>))}
         </div>
@@ -208,27 +235,36 @@ export default function AdminDashboard() {
             </select>
             <button className="btn btn-ghost" onClick={load}>Search</button>
           </div>
-          <div className="card"><table><thead><tr><th>User</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>
+          <div className="card"><table><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Actions</th><th>Contact</th></tr></thead><tbody>
             {filteredUsers.map((u) => (
               <Fragment key={u.id}>
               <tr><td><b>{u.name}</b><div className="muted">{u.email} · {u.org_name || '—'}</div></td><td>{u.role}</td>
                 <td><span className={`badge ${u.status === 'active' ? 'b-green' : u.status === 'pending' ? 'b-amber' : 'b-red'}`}>{u.status}</span></td>
                 <td><div className="row-btns">
-                  <button className="link-btn" onClick={() => setDetail(detail?.id === u.id ? null : u)}>{detail?.id === u.id ? 'Hide' : 'Inspect'}</button>
-                  {u.status === 'pending' && <button className="link-btn" onClick={() => verify(u.id)}>Verify</button>}
+                  <button className="btn btn-ghost" onClick={() => setDetail(detail?.id === u.id ? null : u)}>{detail?.id === u.id ? 'Hide' : 'Inspect'}</button>
+                  {u.status === 'pending' && <button className="btn btn-primary" onClick={() => verify(u.id)}>Verify</button>}
                   {u.status === 'active' && u.email !== user.email
-                    ? <button className="link-btn" onClick={() => setStatus(u.id, { status: 'suspended' })}>Suspend</button>
-                    : u.status === 'suspended' && <button className="link-btn" onClick={() => setStatus(u.id, { status: 'active' })}>Activate</button>}
-                </div></td></tr>
+                    ? <button className="btn btn-ghost" onClick={() => setStatus(u.id, { status: 'suspended' })}>Suspend</button>
+                    : u.status === 'suspended' && <button className="btn btn-ghost" onClick={() => setStatus(u.id, { status: 'active' })}>Activate</button>}
+                </div></td>
+                <td><button className="btn btn-ghost" onClick={() => { setContactFor(contactFor === u.id ? null : u.id); setContact(''); }}>Message</button></td>
+              </tr>
+              {contactFor === u.id && (
+                <tr><td colSpan={5}>
+                  <form onSubmit={(e) => contactUser(e, u)} className="thread-form">
+                    <input value={contact} onChange={(e) => setContact(e.target.value)} placeholder={`Write to ${u.name}…`} autoFocus />
+                    <button className="btn btn-primary" type="submit">Send</button>
+                  </form>
+                </td></tr>)}
               {detail?.id === u.id && (
-                <tr key={u.id + '-detail'}><td colSpan={4}>
+                <tr><td colSpan={5}>
                   <div className="detail-panel">
                     <div><b>Contact</b><p className="muted">{u.phone || 'No phone'} · {u.location || 'No location'} · joined {new Date(u.created_at).toLocaleDateString()}</p>
                       {u.role === 'technician' && <p className="muted">ID {u.id_number || '—'} · {u.specialization || '—'} · {u.experience_years} yrs · {u.cert_details || 'No certs'}</p>}
                     </div>
                     <div><b>Devices ({detailDevices.length})</b>{detailDevices.map((d) => <p key={d.id} className="muted">{d.name} · {d.site} · {stale(d.last_seen) ? 'STALE' : 'live'}</p>)}{!detailDevices.length && <p className="muted">None.</p>}</div>
                     <div><b>Reports ({detailReports.length})</b>{detailReports.slice(0, 4).map((r) => <p key={r.id} className="muted">{r.title} · {r.status}</p>)}{!detailReports.length && <p className="muted">None.</p>}</div>
-                    <form onSubmit={(e) => contactUser(e, u)} className="thread-form"><input value={contact} onChange={(e) => setContact(e.target.value)} placeholder={`Message ${u.name.split(' ')[0]}…`} /><button className="btn btn-primary" type="submit">Send</button></form>
+                    <div><b>Reach them</b><p className="muted">Use the Message button in this row to write directly to {u.name.split(' ')[0]}.</p></div>
                   </div>
                 </td></tr>)}
             </Fragment>))}

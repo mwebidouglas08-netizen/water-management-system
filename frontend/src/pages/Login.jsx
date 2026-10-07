@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, wakeServer } from '../context/AuthContext';
 import { apiErrorMessage } from '../api/client';
 
 export default function Login() {
@@ -8,20 +8,23 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
   const { login } = useAuth();
   const nav = useNavigate();
+
+  useEffect(() => { wakeServer(); }, []);
 
   const go = async (e) => {
     e.preventDefault();
     if (busy) return;
-    setErr(''); setBusy(true);
+    setErr(''); setNote(''); setBusy(true);
     try {
-      const u = await login(email.trim(), password);
+      const u = await login(email.trim(), password, (n) => setNote(`Server is waking up — retrying (${n}/2)…`));
       nav(u.role === 'admin' ? '/admin' : u.role === 'technician' ? '/tech' : '/app');
     } catch (e) {
       setErr(apiErrorMessage(e, 'Sign in failed. Check your email and password.'));
     } finally {
-      setBusy(false);
+      setBusy(false); setNote('');
     }
   };
 
@@ -43,7 +46,7 @@ export default function Login() {
         <label htmlFor="login-pass">Password</label>
         <input id="login-pass" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
         <button type="submit" className="btn btn-primary" style={{ marginTop: 16 }} disabled={busy}>
-          {busy ? 'Signing in…' : 'Sign in'}
+          {busy ? (note || 'Signing in…') : 'Sign in'}
         </button>
         <p>No account yet? <Link to="/register" style={{ color: '#0b5fa5', fontWeight: 800 }}>Create one</Link></p>
       </form>

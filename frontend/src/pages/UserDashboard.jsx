@@ -168,7 +168,10 @@ export default function UserDashboard() {
       </div>
 
       {tab === 'overview' && (
-        !live ? <div className="card">Connecting to live sensors…</div> : (<div className="grid">
+        !live ? <div className="card"><h4>{devices.length ? 'Connecting to live sensors…' : 'Setting up your demo tank…'}</h4>
+          {!devices.length && <><p className="muted">Your dashboard fills itself with a demo tank in a few seconds. If this persists, load it manually:</p>
+          <button className="btn btn-primary" onClick={loadDemo} disabled={demoBusy}>{demoBusy ? 'Loading…' : 'Load demo data'}</button></>}
+        </div> : (<div className="grid">
           <div className="grid grid-4">
             <div className="card gauge-wrap"><div className="gauge" style={{ background: gaugeColor }}>{pct.toFixed(0)}%</div><div><b>Tank level</b><div className="muted">{Number(L.volume_liters).toFixed(0)} L</div></div></div>
             <div className="card"><div className="muted">Flow now</div><div className="kpi">{Number(L.flow_lpm).toFixed(1)} L/min</div><div className="muted">Pressure {L.pressure_bar} bar · Batt {L.battery}%</div></div>
