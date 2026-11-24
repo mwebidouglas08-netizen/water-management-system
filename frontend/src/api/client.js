@@ -62,7 +62,15 @@ export function apiErrorMessage(e, fallback) {
     }
     return `Cannot reach the API at ${API_BASE_URL}. The server may be starting up — wait about 30 seconds and try again. If it keeps failing, check that the backend is running and that its FRONTEND_URL setting allows ${typeof window !== 'undefined' ? window.location.origin : 'this site'}.`;
   }
-  return e.response?.data?.error || fallback;
+  const body = e.response?.data;
+  // The API always explains 4xx/5xx in `error`. Show it verbatim: a server-side
+  // database hiccup must not be dressed up as "check your password".
+  if (body && typeof body.error === 'string' && body.error.trim()) return body.error;
+  if (body && typeof body.reply === 'string' && body.reply.trim()) return body.reply;
+  const status = e.response?.status;
+  if (status === 503) return 'The service is temporarily unavailable. Please try again in a moment.';
+  if (status >= 500) return 'The server hit a problem handling that request. Please try again.';
+  return fallback;
 }
 
 /**

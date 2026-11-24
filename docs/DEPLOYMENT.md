@@ -98,3 +98,36 @@ It is not an authentication error. Check, in this order:
 
 If the API answers but sign-in still fails, the message now tells you which —
 `Invalid credentials` (401), `Account pending` (403) or a database 503 message.
+
+## G. "The service database is unavailable right now" on sign-in
+
+This message means the API could not complete a database query. `/api/health`
+now answers *why* in one sentence — check `reason`, `dbOk`, `tables` and
+`migrate`:
+
+| `reason` / health state | Meaning | Fix |
+|---|---|---|
+| `DATABASE_URL is not set on this service.` | No database linked | Render → Environment → `DATABASE_URL` → Link → your Postgres, redeploy |
+| `The database refused the connection …` | Instance down, wrong host/port | Check the Render Postgres is running; use the **Internal** connection string |
+| `The database hostname does not resolve …` | Bad host, or no egress | Re-copy the connection string; for a linked DB use the internal URL |
+| `DATABASE_URL credentials are wrong …` | Rotated password / wrong db | Copy the current connection string again |
+| `TLS certificate rejected …` | `PGSSL` mismatch | Set `PGSSL=true` on managed Postgres, or use `?sslmode=require` |
+| `The database did not answer in time …` | Suspended / cold start | Retry in ~30s; on free tiers the instance sleeps |
+| `Connected, but the schema is not applied yet` | Migration pending/failed | `POST /api/health/migrate`, or redeploy; details are in `migrate.failures` |
+| `migrate.failures` lists statements | A schema statement is broken | Fix the statement in `database/schema.sql`; the rest of the schema is still applied |
+
+Things that were wrong before and are fixed now:
+
+- The schema used to be applied as one multi-statement query, which PostgreSQL
+  runs as a **single transaction**: one failing statement rolled back *every*
+  table, so a fresh database ended up with no schema at all and every sign-in
+  failed. Statements are now applied one by one, so a bad statement can no
+  longer erase a working schema.
+- Migrations are serialised (one in-process run, plus a Postgres advisory
+  lock), so boot, the auth self-heal and the seed can no longer collide on
+  `CREATE TABLE IF NOT EXISTS` (previously a possible deadlock/abort).
+- The auth routes used to report *every* failure — including wrong credentials
+  and missing tables — as "database unavailable". They now distinguish a real
+  outage (503, retry helps) from a configuration or schema problem.
+- `sslmode` in `DATABASE_URL` is honoured, and `PGSSL=true` alone no longer
+  forces TLS on a host that does not offer it.

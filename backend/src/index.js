@@ -76,22 +76,45 @@ app.get('/', (req, res) => res.json({ name: 'MajiSafe API', version: '1.0.0', do
 // Health check must succeed even without DB so Render can pass deploy checks.
 // DB status is reported explicitly instead of crashing the process.
 app.get('/api/health', async (req, res) => {
-  const { checkDb, isDbConfigured, tablesReady } = require('./db');
+  const { checkDb, isDbConfigured, tablesReady, explainDbFailure } = require('./db');
   const { migrateStatus } = require('./migrate');
   const db = await checkDb();
+  const tables = await tablesReady();
+  const migration = migrateStatus();
+  // One sentence an operator can act on, instead of a bare boolean.
+  const reason = !isDbConfigured
+    ? 'DATABASE_URL is not set on this service.'
+    : !db.ok
+      ? explainDbFailure({ code: db.code, message: db.error })
+      : !tables
+        ? 'Connected, but the schema is not applied yet (migration pending or failed).'
+        : null;
+  // Always 200: Render's health check must pass so the service stays up and
+  // can serve the explanatory payload (ready:false) instead of being replaced.
   res.json({
     ok: true,
+    ready: Boolean(db.ok && tables),
     time: new Date().toISOString(),
     dbConfigured: isDbConfigured,
     dbOk: db.ok,
     dbError: db.error || null,
-    tables: await tablesReady(),
-    migrate: migrateStatus(),
+    dbLatencyMs: db.latencyMs ?? null,
+    tables,
+    migrate: migration,
+    reason,
     // Quick answer to "why does the browser say Failed to fetch?"
     origin: req.headers.origin || null,
     originAllowed: isAllowedOrigin(req.headers.origin),
     corsAllowlist: configuredOrigins
   });
+});
+
+// Applies the schema on demand (idempotent, serialised). Handy from Render's
+// shell or a browser when a fresh database has not been scaffolded yet.
+app.post('/api/health/migrate', async (req, res) => {
+  const { migrate } = require('./migrate');
+  const result = await migrate();
+  res.status(result.ran ? 200 : 503).json({ ok: result.ran, migrate: result });
 });
 
 // Proves the browser is talking to *this* API, and shows whether its origin is
@@ -112,11 +135,21 @@ app.use((req, res) => res.status(404).json({ error: 'Not found' }));
 // Friendly 503 when DB is not linked yet (instead of raw ECONNREFUSED stack).
 // eslint-disable-next-line
 app.use((err, req, res, next) => {
-  console.error(err);
-  if (err.code === 'NO_DATABASE_URL') return res.status(503).json({ error: err.message });
-  if (err.code === 'ECONNREFUSED') return res.status(503).json({ error: 'Cannot reach Postgres. Check DATABASE_URL (Render → Environment → link majisafe-db) and redeploy.' });
-  if (err.code && /^(42|53|08|57)/.test(err.code))
-    return res.status(503).json({ error: 'Database temporarily unavailable. Try again in a moment.' });
+  const { isTransientDbError, explainDbFailure } = require('./db');
+  const where = `${req.method} ${req.originalUrl}`;
+  console.error(`[error] ${where} ${err.code || ''}: ${err.message}`);
+  if (err.code === 'NO_DATABASE_URL')
+    return res.status(503).json({ error: 'The service database is not connected yet. Please try again in a moment.' });
+  // Only genuine connectivity problems get the "try again" wording; a bad
+  // query must not be reported as an outage (that advice can never fix it).
+  if (isTransientDbError(err)) {
+    console.error(`[error] database unavailable — ${explainDbFailure(err)}`);
+    return res.status(503).json({ error: 'The service database is unavailable right now. Please try again in a moment.' });
+  }
+  if (err.code === '42P01')
+    return res.status(503).json({ error: 'The service database is still being set up. Please try again in a moment.' });
+  // Body-parser / validation problems.
+  if (err.status && err.status < 500) return res.status(err.status).json({ error: err.message });
   res.status(500).json({ error: 'Server error' });
 });
 
@@ -158,6 +191,14 @@ const server = app.listen(PORT, HOST, () => {
   } else {
     console.log(`[cors] allowed origins: ${configuredOrigins.join(', ')}`);
   }
-  require('./migrate').migrateWithRetry().then(ensureAdmin).catch((e) => console.error('[boot] loop error', e.message));
+  // Try the schema immediately so sign-in works seconds after a cold boot,
+  // then keep retrying in the background while a free-tier database wakes up.
+  require('./migrate').migrate()
+    .then((r) => {
+      console.log(`[boot] migrate: ${r.ran ? 'ready' : `not ready (${r.reason})`}`);
+      if (r.ran) return ensureAdmin();
+      return require('./migrate').migrateWithRetry().then(ensureAdmin);
+    })
+    .catch((e) => console.error('[boot] migrate loop error:', e.message));
 });
 server.on('error', (e) => console.error('[boot] listen failed:', e.message));
