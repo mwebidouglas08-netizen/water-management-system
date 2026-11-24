@@ -174,3 +174,28 @@ Using the internal string anywhere else fails DNS with
   (what `check-db` does) is.
 - Never paste a connection string into a repository, an issue or a commit.
   Pass it as an environment variable / dashboard value only.
+
+### Why a dashboard edit to `DATABASE_URL` used to revert
+
+`render.yaml` previously declared:
+
+```yaml
+- key: DATABASE_URL
+  fromDatabase:
+    name: majisafe-db
+    property: connectionString
+```
+
+That makes the variable **Blueprint-owned**. Render recomputes it from the
+Blueprint on every sync/deploy, so a value typed into Service → Environment is
+discarded and replaced with the connection string of the declared database —
+in this case one that no longer existed. The service kept dialing
+`dpg-db2t3kt9fdbs7396i1ig-a`, DNS returned ENOTFOUND, and every login answered
+"The service database is unavailable right now."
+
+It is now `sync: false`, so the dashboard value is authoritative. Verify a
+change took effect with:
+
+```bash
+curl -s https://<service>.onrender.com/api/health | grep -o '"dbTarget":"[^"]*"'
+```

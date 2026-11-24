@@ -10,10 +10,21 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20.12.0
+      # Set this in the Render dashboard:
+      #   Service -> Environment -> DATABASE_URL -> paste the External
+      #   Database URL from your Postgres instance -> Save.
+      #
+      # "sync: false" means Render does NOT manage or overwrite this value from
+      # the Blueprint. This matters: it previously read
+      #     fromDatabase: { name: majisafe-db, property: connectionString }
+      # which made the variable Blueprint-owned, so every dashboard edit was
+      # silently reverted on the next sync/deploy. The service therefore kept
+      # dialing the old, deleted database (dpg-db2t3kt9fdbs7396i1ig-a), DNS
+      # failed with ENOTFOUND, and every login returned
+      #   "The service database is unavailable right now."
+      # With sync: false the value you set in the dashboard is what the app uses.
       - key: DATABASE_URL
-        fromDatabase:
-          name: majisafe-db
-          property: connectionString
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: FRONTEND_URL
@@ -21,7 +32,19 @@ services:
       - key: PGSSL
         value: true
 
-databases:
-  - name: majisafe-db
-    databaseName: majisafe
-    user: majisafe
+# No Blueprint-managed database on purpose.
+#
+# The app now points at an externally-created Postgres instance, set through the
+# dashboard value above. Declaring one here would make Render provision and bill
+# a second, unused database, and would tempt a future sync back to
+# "fromDatabase:" — the exact setup that caused the outage.
+#
+# If you would rather have Render manage the database, restore this block AND
+# change DATABASE_URL back to
+#     fromDatabase: { name: majisafe-db, property: connectionString }
+# then run "npm run check-db" from the service shell to confirm.
+#
+# databases:
+#   - name: majisafe-db
+#     databaseName: majisafe
+#     user: majisafe
