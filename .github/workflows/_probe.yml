@@ -28,6 +28,7 @@ jobs:
         run: |
           set +e
           cd backend && npm install --no-audit --no-fund >/dev/null 2>&1; cd ..
+          export NODE_PATH="$GITHUB_WORKSPACE/backend/node_modules"
           OUT=$GITHUB_WORKSPACE/PROBE.md
           {
             echo "# Verification $(date -u +%FT%TZ)"
