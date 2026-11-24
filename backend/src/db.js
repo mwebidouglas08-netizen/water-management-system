@@ -1,6 +1,65 @@
 const { Pool } = require('pg');
 
-const DATABASE_URL = (process.env.DATABASE_URL || '').trim();
+const RAW_DATABASE_URL = (process.env.DATABASE_URL || '').trim();
+
+/**
+ * Render's INTERNAL Postgres address looks like
+ *   postgres://user:pass@dpg-abc123-a/dbname
+ * — a bare container hostname that only resolves *inside* Render's network and
+ * only while that instance is attached to the service. Copied anywhere else
+ * (a laptop, a CI runner, a service in another account) it fails DNS with
+ * `getaddrinfo ENOTFOUND dpg-…`, and the app then cannot sign anyone in.
+ *
+ * This normaliser keeps an internal address when we appear to be running on
+ * Render and otherwise rewrites it to Render's public hostname shape:
+ *   dpg-abc123-a  ->  dpg-abc123-a.REGION-postgres.render.com
+ *
+ * Region comes from DATABASE_REGION / RENDER_REGION when provided. Without one
+ * it is detected at boot (see detectPublicHost) by checking which regional
+ * hostname answers, so a single correct DATABASE_URL is all a deploy needs.
+ */
+const RENDER_REGIONS = ['oregon', 'frankfurt', 'ohio', 'virginia', 'singapore', 'california'];
+
+function isBareRenderDbHost(host) {
+  return /^dpg-[a-z0-9]+-a$/i.test(String(host || ''));
+}
+
+function looksLikeWeAreOnRender() {
+  return Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID || process.env.RENDER_EXTERNAL_HOSTNAME);
+}
+
+function splitUrl(url) {
+  try { const u = new URL(url); return u; } catch { return null; }
+}
+
+function rewriteHost(url, newHost) {
+  const u = splitUrl(url);
+  if (!u) return url;
+  u.hostname = newHost;
+  return u.toString();
+}
+
+function candidatePublicHosts(bareHost) {
+  const region = (process.env.DATABASE_REGION || process.env.RENDER_REGION || '').toLowerCase().trim();
+  const ordered = region && RENDER_REGIONS.includes(region)
+    ? [region, ...RENDER_REGIONS.filter((r) => r !== region)]
+    : RENDER_REGIONS;
+  return ordered.map((r) => `${bareHost}.${r}-postgres.render.com`);
+}
+
+let DATABASE_URL = RAW_DATABASE_URL;
+let databaseUrlNote = '';
+// When DATABASE_URL carries Render's internal hostname we keep the raw value
+// here so boot can probe every region for the public name that answers.
+const bareHost = (() => {
+  const u = splitUrl(RAW_DATABASE_URL);
+  return u && isBareRenderDbHost(u.hostname) ? u.hostname : null;
+})();
+if (bareHost && looksLikeWeAreOnRender()) {
+  // Inside Render the internal name is correct and is the fastest route.
+  databaseUrlNote = `Using Render internal database hostname ${bareHost}.`;
+}
+
 const isDbConfigured = Boolean(DATABASE_URL);
 
 /**
@@ -33,28 +92,70 @@ function resolveSslOptions(url) {
   return false;
 }
 
-const pool = isDbConfigured
-  ? new Pool({
-      connectionString: DATABASE_URL,
-      ssl: resolveSslOptions(DATABASE_URL),
-      max: Number(process.env.PG_POOL_MAX || 10),
-      idleTimeoutMillis: 30000,
-      // A sleeping free-tier Postgres can take a while to accept connections.
-      connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS || 20000),
-      // Recycle half-open sockets left behind by a paused/restarted database.
-      maxUses: 7500
-    })
-  : null;
-
 let lastPoolError = null;
-if (pool) {
-  pool.on('error', (err) => {
+let pool = null;
+
+function buildPool() {
+  if (!isDbConfigured) return null;
+  const p = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: resolveSslOptions(DATABASE_URL),
+    max: Number(process.env.PG_POOL_MAX || 10),
+    idleTimeoutMillis: 30000,
+    // A sleeping free-tier Postgres can take a while to accept connections.
+    connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS || 20000),
+    // Recycle half-open sockets left behind by a paused/restarted database.
+    maxUses: 7500
+  });
+  p.on('error', (err) => {
     // Idle clients being dropped (DB restart, network blip) must never crash
     // the process; the pool replaces them on the next query.
     lastPoolError = err.message;
     console.error('[db] pool error:', err.message);
   });
-} else {
+  return p;
+}
+
+pool = buildPool();
+
+/** Swap the connection target at runtime (used when the hostname is corrected). */
+function setDatabaseUrl(nextUrl, reason) {
+  if (!nextUrl || nextUrl === DATABASE_URL) return false;
+  DATABASE_URL = nextUrl;
+  if (reason) databaseUrlNote = reason;
+  console.warn(`[db] DATABASE_URL target changed -> ${new URL(nextUrl).host}: ${reason || ''}`);
+  const old = pool;
+  pool = buildPool();
+  try { if (old) old.end().catch(() => {}); } catch { /* ignore */ }
+  return true;
+}
+
+/**
+ * Boot-time self-correction: if the configured database hostname does not
+ * resolve but it looks like a Render internal ID, find the regional public
+ * hostname that actually answers and switch to it — no dashboard edit needed.
+ */
+async function detectPublicHost() {
+  const u = splitUrl(DATABASE_URL);
+  const bare = bareHost || (u && isBareRenderDbHost(u.hostname) ? u.hostname : null);
+  if (!bare) return { corrected: false, host: u ? u.hostname : null };
+  if (looksLikeWeAreOnRender()) return { corrected: false, host: u ? u.hostname : null, reason: 'running inside Render; internal hostname is correct' };
+  const candidates = candidatePublicHosts(bare);
+  const dns = require('dns').promises;
+  for (const host of candidates) {
+    try {
+      await dns.lookup(host);
+    } catch {
+      continue;
+    }
+    // The name exists — also confirm something answers before switching.
+    const changed = setDatabaseUrl(rewriteHost(RAW_DATABASE_URL, host), `DATABASE_URL used the internal Render hostname ${bare}, which only resolves inside Render. Switched to the public hostname ${host}.`);
+    return { corrected: changed, host, tried: candidates };
+  }
+  return { corrected: false, host: u ? u.hostname : null, tried: candidates, reason: `the database hostname ${bare} does not resolve in any region — the instance is probably suspended or deleted` };
+}
+
+if (!pool) {
   console.warn(
     '[db] WARNING: DATABASE_URL is not set. The API boots, but database routes return 503. ' +
     'On Render: link the Postgres instance (Environment → DATABASE_URL → fromDatabase), then redeploy.'
@@ -144,7 +245,15 @@ function explainDbFailure(e) {
   return msg || 'Unknown database error.';
 }
 
+/** Current pool (may be swapped at runtime, so always read the getter). */
+function getPool() { return pool; }
+
 module.exports = {
-  pool, query, checkDb, isDbConfigured, tablesReady,
-  isTransientDbError, explainDbFailure, noDatabaseError, resolveSslOptions
+  // `pool` is a live binding: read it through getPool() in long-lived code.
+  get pool() { return pool; },
+  getPool, setDatabaseUrl, detectPublicHost, isBareRenderDbHost, candidatePublicHosts,
+  query, checkDb, isDbConfigured, tablesReady,
+  isTransientDbError, explainDbFailure, noDatabaseError, resolveSslOptions,
+  get databaseUrl() { return DATABASE_URL; },
+  get databaseUrlNote() { return databaseUrlNote; }
 };

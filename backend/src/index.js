@@ -99,6 +99,8 @@ app.get('/api/health', async (req, res) => {
     dbOk: db.ok,
     dbError: db.error || null,
     dbLatencyMs: db.latencyMs ?? null,
+    dbTarget: (() => { try { return new URL(require('./db').databaseUrl).host; } catch { return null; } })(),
+    dbNote: require('./db').databaseUrlNote || null,
     tables,
     migrate: migration,
     reason,
@@ -191,9 +193,15 @@ const server = app.listen(PORT, HOST, () => {
   } else {
     console.log(`[cors] allowed origins: ${configuredOrigins.join(', ')}`);
   }
-  // Try the schema immediately so sign-in works seconds after a cold boot,
-  // then keep retrying in the background while a free-tier database wakes up.
-  require('./migrate').migrate()
+  // If the configured database hostname does not resolve (typically a Render
+  // internal ID used outside Render), find the public regional hostname and
+  // switch to it before the first query — one bad env var must not disable
+  // sign-in for every user.
+  const { detectPublicHost } = require('./db');
+  detectPublicHost()
+    .then((r) => { if (r && (r.corrected || r.reason)) console.log('[db] hostname check:', JSON.stringify(r)); })
+    .catch((e) => console.warn('[db] hostname check failed:', e.message))
+    .then(() => require('./migrate').migrate())
     .then((r) => {
       console.log(`[boot] migrate: ${r.ran ? 'ready' : `not ready (${r.reason})`}`);
       if (r.ran) return ensureAdmin();
