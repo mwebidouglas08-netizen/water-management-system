@@ -1,29 +1,19 @@
 import { createContext, useContext, useState } from 'react';
-import api from '../api/client';
+import api, { API_BASE_URL, API_URL_CONFIGURED, withNetworkRetry } from '../api/client';
 
 const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
 
-// Free hosting sleeps: the first request can take ~30-60s while Render wakes.
-// Retry no-response failures with backoff, reporting progress to the UI.
-async function withRetry(fn, onWait) {
-  let last;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      return await fn();
-    } catch (e) {
-      last = e;
-      if (e.response || attempt === 2) throw e; // server answered (or out of tries)
-      if (onWait) onWait(attempt + 1);
-      await new Promise((r) => setTimeout(r, 9000 * (attempt + 1)));
-    }
-  }
-  throw last;
+// Fire on auth pages at mount so a sleeping backend is already waking while
+// the user types (free hosting tiers can take ~40s to boot).
+export function wakeServer() {
+  if (!API_URL_CONFIGURED) return Promise.resolve(null);
+  return api.get('/health').catch(() => null);
 }
 
-// Fire on auth pages at mount so the backend is already waking while typing.
-export function wakeServer() {
-  api.get('/health').catch(() => {});
+function persist(data) {
+  localStorage.setItem('majisafe_token', data.token);
+  localStorage.setItem('majisafe_user', JSON.stringify(data.user));
 }
 
 export function AuthProvider({ children }) {
@@ -32,18 +22,22 @@ export function AuthProvider({ children }) {
   });
 
   const login = async (email, password, onWait) => {
-    const { data } = await withRetry(() => api.post('/auth/login', { email, password }), onWait);
-    localStorage.setItem('majisafe_token', data.token);
-    localStorage.setItem('majisafe_user', JSON.stringify(data.user));
+    const { data } = await withNetworkRetry(
+      () => api.post('/auth/login', { email, password }),
+      onWait
+    );
+    persist(data);
     setUser(data.user);
     return data.user;
   };
 
   const register = async (payload, onWait) => {
-    const { data } = await withRetry(() => api.post('/auth/register', payload), onWait);
+    const { data } = await withNetworkRetry(
+      () => api.post('/auth/register', payload),
+      onWait
+    );
     if (data.token) {
-      localStorage.setItem('majisafe_token', data.token);
-      localStorage.setItem('majisafe_user', JSON.stringify(data.user));
+      persist(data);
       setUser(data.user);
     }
     return data;
@@ -55,5 +49,5 @@ export function AuthProvider({ children }) {
     setUser(null);
   };
 
-  return <AuthCtx.Provider value={{ user, login, register, logout }}>{children}</AuthCtx.Provider>;
+  return <AuthCtx.Provider value={{ user, login, register, logout, apiBaseUrl: API_BASE_URL }}>{children}</AuthCtx.Provider>;
 }

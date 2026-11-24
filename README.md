@@ -90,10 +90,13 @@ npm start              # API → http://localhost:5000
 
 ```bash
 cd frontend
-cp .env.example .env   # set VITE_API_URL=http://localhost:5000
+cp .env.example .env   # optional in dev — /api is proxied to the backend
 npm install
-npm run dev            # app → http://localhost:5173
+npm run dev            # app → http://localhost:5173 (proxies /api → :5000)
 ```
+
+The dev server proxies `/api` to `http://127.0.0.1:5000`, so local sign-in and
+registration never depend on CORS. Point it elsewhere with `VITE_PROXY_TARGET`.
 
 ## Environment variables
 
@@ -105,7 +108,8 @@ npm run dev            # app → http://localhost:5173
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Backend | First admin, created on boot only if no admin exists |
 | `PGSSL` | Backend | Set `true` on managed Postgres |
 | `NODE_VERSION` | Backend | Pinned to `20.12.0` |
-| `VITE_API_URL` | Frontend | Backend base URL, no trailing slash (baked in at build time) |
+| `VITE_API_URL` | Frontend | Backend base URL, no trailing slash (baked in at build time — redeploy after changing) |
+| `VITE_PROXY_TARGET` | Frontend (dev only) | Where `npm run dev` proxies `/api` (default `http://127.0.0.1:5000`) |
 
 Never commit `.env` files or tokens. If a secret is ever exposed, rotate it
 and redeploy; users simply sign in again (7-day JWTs).
