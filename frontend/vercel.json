@@ -1,7 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/:path*" },
+    {
+      "source": "/api/:path*",
+      "destination": "https://water-management-system-6lnh.onrender.com/api/:path*"
+    },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "headers": [

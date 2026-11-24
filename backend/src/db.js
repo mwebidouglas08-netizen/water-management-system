@@ -28,6 +28,38 @@ function looksLikeWeAreOnRender() {
   return Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID || process.env.RENDER_EXTERNAL_HOSTNAME);
 }
 
+/**
+ * Can we actually open a Postgres connection to this URL?
+ *
+ * DNS is not proof. Render publishes a WILDCARD record for
+ * `*.REGION-postgres.render.com`, so `dpg-doesnotexist-a.oregon-postgres…`
+ * resolves happily and then refuses or resets the connection. Only a completed
+ * handshake tells the truth. This is the check that decides whether the
+ * configured target is usable, and whether a candidate is worth switching to.
+ *
+ * Bounded by `timeoutMs` so a black-holed host cannot stall boot.
+ */
+async function testConnection(url, timeoutMs = 8000) {
+  const { Client } = require('pg');
+  const client = new Client({
+    connectionString: url,
+    ssl: resolveSslOptions(url),
+    connectionTimeoutMillis: timeoutMs,
+    query_timeout: timeoutMs
+  });
+  // A failing client must not raise an unhandled 'error' event.
+  client.on('error', () => {});
+  try {
+    await client.connect();
+    await client.query('SELECT 1');
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, code: e.code || null, message: e.message };
+  } finally {
+    try { await client.end(); } catch { /* already dead */ }
+  }
+}
+
 function splitUrl(url) {
   try { const u = new URL(url); return u; } catch { return null; }
 }
@@ -55,9 +87,10 @@ const bareHost = (() => {
   const u = splitUrl(RAW_DATABASE_URL);
   return u && isBareRenderDbHost(u.hostname) ? u.hostname : null;
 })();
-if (bareHost && looksLikeWeAreOnRender()) {
-  // Inside Render the internal name is correct and is the fastest route.
-  databaseUrlNote = `Using Render internal database hostname ${bareHost}.`;
+if (bareHost) {
+  // Do not claim this is correct — it is only correct if the instance is
+  // attached to this service. detectPublicHost() proves it by connecting.
+  databaseUrlNote = `DATABASE_URL uses the Render internal hostname ${bareHost}; verifying it at boot.`;
 }
 
 const isDbConfigured = Boolean(DATABASE_URL);
@@ -131,28 +164,86 @@ function setDatabaseUrl(nextUrl, reason) {
 }
 
 /**
- * Boot-time self-correction: if the configured database hostname does not
- * resolve but it looks like a Render internal ID, find the regional public
- * hostname that actually answers and switch to it — no dashboard edit needed.
+ * Boot-time self-correction: work out a database target that can actually be
+ * connected to, from whatever DATABASE_URL happens to say.
+ *
+ * Four cases, in order:
+ *  1. A non-Render hostname (fully-qualified regional, Neon, Supabase, …) is
+ *     tried as-is and left alone. Nothing to correct.
+ *  2. A bare Render internal ID (`dpg-…-a`) used on a service that is NOT
+ *     attached to that instance → probe the public regional hostnames and
+ *     switch to the one that completes a handshake.
+ *  3. CRITICALLY: the same bare ID used while running ON Render. The internal
+ *     name is only correct when the database is genuinely attached. If the
+ *     instance was deleted, it does not resolve even inside Render, and the old
+ *     code bailed out here with "running inside Render; internal hostname is
+ *     correct" — leaving sign-in permanently broken. Now it is proved by
+ *     connecting, and the public hostnames are tried if that fails.
+ *  4. Nothing works → say so honestly, naming the host, and let the caller
+ *     decide (the auth route retries, health reports it).
+ *
+ * Async and bounded: every probe has its own timeout, so boot cannot hang.
  */
 async function detectPublicHost() {
   const u = splitUrl(DATABASE_URL);
-  const bare = bareHost || (u && isBareRenderDbHost(u.hostname) ? u.hostname : null);
-  if (!bare) return { corrected: false, host: u ? u.hostname : null };
-  if (looksLikeWeAreOnRender()) return { corrected: false, host: u ? u.hostname : null, reason: 'running inside Render; internal hostname is correct' };
-  const candidates = candidatePublicHosts(bare);
-  const dns = require('dns').promises;
-  for (const host of candidates) {
-    try {
-      await dns.lookup(host);
-    } catch {
-      continue;
-    }
-    // The name exists — also confirm something answers before switching.
-    const changed = setDatabaseUrl(rewriteHost(RAW_DATABASE_URL, host), `DATABASE_URL used the internal Render hostname ${bare}, which only resolves inside Render. Switched to the public hostname ${host}.`);
-    return { corrected: changed, host, tried: candidates };
+  if (!u) {
+    return { corrected: false, host: null, reason: 'DATABASE_URL is not a valid URL' };
   }
-  return { corrected: false, host: u ? u.hostname : null, tried: candidates, reason: `the database hostname ${bare} does not resolve in any region — the instance is probably suspended or deleted` };
+
+  const current = u.hostname;
+  const bare = bareHost || (isBareRenderDbHost(current) ? current : null);
+
+  // Case 1: an ordinary, fully-qualified hostname. Nothing to rewrite.
+  if (!bare) {
+    return {
+      corrected: false,
+      host: current,
+      verified: null,
+      reason: 'DATABASE_URL uses a fully-qualified hostname; leaving it as configured'
+    };
+  }
+
+  const onRender = looksLikeWeAreOnRender();
+  const currentUrl = DATABASE_URL;
+
+  // Case 2/3: a bare internal ID. Test what is configured before trusting it.
+  const direct = await testConnection(currentUrl, 8000);
+  if (direct.ok) {
+    return {
+      corrected: false,
+      host: current,
+      verified: true,
+      reason: onRender
+        ? `Using Render internal database hostname ${bare}; it accepted a connection.`
+        : `The bare hostname ${bare} resolved and accepted a connection.`
+    };
+  }
+
+  // The configured target is dead — deleted instance, or internal-only name
+  // used outside Render. Try the public regional hostnames.
+  const candidates = candidatePublicHosts(bare);
+  const tried = [];
+  for (const host of candidates) {
+    if (host === current) continue;
+    const attempt = await testConnection(rewriteHost(currentUrl, host), 8000);
+    tried.push({ host, ok: attempt.ok, code: attempt.code });
+    if (!attempt.ok) continue;
+
+    const changed = setDatabaseUrl(
+      rewriteHost(currentUrl, host),
+      `DATABASE_URL pointed at ${bare}, which did not accept a connection. Switched to ${host}, which did.`
+    );
+    return { corrected: changed, host, verified: true, tried };
+  }
+
+  // Case 4: honest failure. Keep the configured URL so the error the user sees
+  // still names the host they set, and so the next retry uses the same value.
+  const prefix = `The database host ${bare} did not accept a connection`;
+  const why = onRender
+    ? ' even from inside Render. That instance has probably been deleted or suspended — set DATABASE_URL to the External Database URL of a running instance.'
+    : ' (Render internal hostnames only work inside Render). Set DATABASE_URL to the External Database URL.';
+  const dir = direct.code ? ` Last error: ${direct.code} ${direct.message}` : '';
+  return { corrected: false, host: current, verified: false, tried, reason: prefix + why + dir };
 }
 
 if (!pool) {
@@ -252,6 +343,7 @@ module.exports = {
   // `pool` is a live binding: read it through getPool() in long-lived code.
   get pool() { return pool; },
   getPool, setDatabaseUrl, detectPublicHost, isBareRenderDbHost, candidatePublicHosts,
+  testConnection,
   query, checkDb, isDbConfigured, tablesReady,
   isTransientDbError, explainDbFailure, noDatabaseError, resolveSslOptions,
   get databaseUrl() { return DATABASE_URL; },

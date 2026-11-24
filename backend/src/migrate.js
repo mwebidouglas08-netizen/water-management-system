@@ -187,14 +187,37 @@ async function migrate() {
   return inFlight;
 }
 
-async function migrateWithRetry({ tries = 20, delayMs = 15000 } = {}) {
-  for (let i = 1; i <= tries; i++) {
+/**
+ * Keep trying until the schema is ready, forever, with a capped backoff.
+ *
+ * The previous version stopped after 20 tries (~5 minutes) and never ran
+ * again. That made a transient database problem permanent for the lifetime of
+ * the process: the service stayed on `ready:false` and every sign-in returned
+ * 503 until someone redeployed by hand. Health reporting even went stale, with
+ * `attempts` frozen while the clock moved on.
+ *
+ * Now a fix to DATABASE_URL (or the database waking up) is picked up on the
+ * next attempt with no redeploy. The delay backs off to a ceiling so an outage
+ * costs a handful of queries a minute, not one every 15 seconds forever.
+ * The loop stops as soon as the schema is ready.
+ */
+async function migrateWithRetry({ delayMs = 15000, maxDelayMs = 120000, maxTries = 0 } = {}) {
+  let delay = delayMs;
+  let i = 0;
+  for (;;) {
+    i += 1;
     const r = await migrate();
     if (r.ran) return r;
-    if (i < tries) await new Promise((res) => setTimeout(res, delayMs));
+    if (maxTries && i >= maxTries) {
+      console.error(`[migrate] stopping after ${i} attempts. Last: ${last.reason}`);
+      return { ...last };
+    }
+    if (i === 1 || i % 10 === 0) {
+      console.warn(`[migrate] not ready (attempt ${i}): ${last.reason} — retrying in ${Math.round(delay / 1000)}s`);
+    }
+    await new Promise((res) => setTimeout(res, delay));
+    delay = Math.min(Math.round(delay * 1.5), maxDelayMs);
   }
-  console.error(`[migrate] gave up after ${tries} attempts. Last: ${last.reason}`);
-  return { ...last };
 }
 
 function migrateStatus() {

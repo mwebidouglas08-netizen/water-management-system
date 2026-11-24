@@ -43,8 +43,24 @@ async function withDb(fn, req, res, action) {
   try {
     return await fn(req, res);
   } catch (e) {
-    if (e && e.code === '42P01') {
-      console.warn(`[auth/${action}] schema not ready — running migration and retrying once`);
+    // Two different recoveries:
+    //  - 42P01: the schema is missing → apply it, then retry.
+    //  - a connectivity failure: the configured target may have been wrong or
+    //    the database may have been away. Re-run hostname detection and the
+    //    migration once, then retry. This is what lets a corrected
+    //    DATABASE_URL take effect without a redeploy, and it is why sign-in
+    //    can recover by itself instead of sitting on a stale failure.
+    const schemaMissing = e && e.code === '42P01';
+    const connectivity = isTransientDbError(e);
+
+    if (schemaMissing || connectivity) {
+      console.warn(
+        `[auth/${action}] ${schemaMissing ? 'schema not ready' : 'database unreachable'} — re-checking target and migrating, then retrying once`
+      );
+      try {
+        const { detectPublicHost } = require('../db');
+        await detectPublicHost();
+      } catch { /* detection is best-effort; migrate below reports the truth */ }
       const result = await migrate();
       if (result.ran) {
         try {
