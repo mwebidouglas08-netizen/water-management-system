@@ -131,3 +131,46 @@ Things that were wrong before and are fixed now:
   outage (503, retry helps) from a configuration or schema problem.
 - `sslmode` in `DATABASE_URL` is honoured, and `PGSSL=true` alone no longer
   forces TLS on a host that does not offer it.
+
+## H. Pointing the app at the right database (verified procedure)
+
+The deployed service must be configured with the **External** connection string.
+Render hands out two, and they are not interchangeable:
+
+| | Example | Usable from |
+|---|---|---|
+| Internal | `postgres://u:p@dpg-abc123-a/db` | only inside Render, only for a service the DB is *attached* to |
+| External | `postgres://u:p@dpg-abc123-a.REGION-postgres.render.com/db` | anywhere (needs SSL) |
+
+Using the internal string anywhere else fails DNS with
+`getaddrinfo ENOTFOUND dpg-…`, which the app reports as "database unavailable".
+
+### Steps
+
+1. Render → your Postgres → **Connect** → copy the **External Database URL**
+   (it ends in `<region>-postgres.render.com`).
+2. Render → your **web service** → Environment → `DATABASE_URL` → replace the
+   value with that external URL → **Save** (the service redeploys).
+3. Verify from the service's **Shell** tab:
+
+   ```bash
+   cd backend && npm run check-db
+   ```
+
+   Expect `RESULT: the app can use this database.` and the table list. If it
+   says otherwise, the message names the cause (bad hostname / credentials /
+   missing database / suspended instance).
+
+4. `curl https://<service>.onrender.com/api/health` → `"ready": true`.
+5. Sign in. Register an account if the database is new (it starts empty).
+
+### Notes
+
+- The schema is applied automatically on boot; `npm run check-db` also works
+  against a fresh database and will show `(none — run: npm run migrate)`.
+- Render Postgres DNS is a wildcard: **every** `dpg-…-postgres.render.com`
+  name resolves, even for instances that do not exist. A resolved name is not
+  proof of a working database — only a successful login at the protocol level
+  (what `check-db` does) is.
+- Never paste a connection string into a repository, an issue or a commit.
+  Pass it as an environment variable / dashboard value only.
