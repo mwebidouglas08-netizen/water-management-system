@@ -1,51 +1,81 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const { query } = require('../db');
+const { query, isTransientDbError, explainDbFailure } = require('../db');
 const { signToken } = require('../middleware/auth');
 const { migrate } = require('../migrate');
 
 const router = express.Router();
 
-function dbUnavailable(res, e, action) {
-  console.error(`[auth/${action}]`, e.code || '', e.message);
-  if (e.code === 'NO_DATABASE_URL')
-    return res.status(503).json({ error: 'The service database is still connecting. Please wait a minute and try again.' });
-  return res.status(503).json({ error: 'The service database is unavailable right now. Please wait a moment and try again.' });
+const RETRY_HINT = 'Please try again in a moment.';
+
+/**
+ * Turn a database failure into an answer the user can act on.
+ *
+ * The previous version mapped *every* exception to "the database is
+ * unavailable", which hid wrong credentials, missing tables and TLS problems
+ * behind advice that could never fix them. Now:
+ *  - transient outages (instance asleep/down, connection dropped) keep the
+ *    retry wording, because retrying genuinely helps;
+ *  - a missing table triggers one self-heal, then says the schema is not ready;
+ *  - anything else is reported as an application error and logged with detail.
+ * Only the server log carries the raw message; the client never sees internals.
+ */
+function dbFailure(res, e, action) {
+  const code = e && e.code;
+  const detail = explainDbFailure(e);
+  console.error(`[auth/${action}] ${code || 'error'}: ${e && e.message}`);
+
+  if (code === 'NO_DATABASE_URL') {
+    return res.status(503).json({ error: `The service database is not connected yet. ${RETRY_HINT}` });
+  }
+  if (isTransientDbError(e)) {
+    return res.status(503).json({ error: `The service database is unavailable right now. ${RETRY_HINT}` });
+  }
+  return res.status(500).json({ error: 'The sign-in service hit an unexpected error. Please try again; if it persists, contact support.' });
 }
 
-// If tables were missed at boot (code 42P01 = undefined_table), heal once
-// and retry the handler instead of failing the user's signup/signin.
-async function withHeal(fn, req, res, action) {
+/**
+ * Runs an auth handler, healing a missing schema once. Login/registration are
+ * the first requests a fresh deployment ever receives, so they are also the
+ * requests that must be able to finish applying the schema.
+ */
+async function withDb(fn, req, res, action) {
   try {
     return await fn(req, res);
   } catch (e) {
     if (e && e.code === '42P01') {
-      console.warn(`[auth/${action}] missing table — running migrate and retrying once`);
-      try {
-        await migrate();
-        return await fn(req, res);
-      } catch (e2) {
-        return dbUnavailable(res, e2, action);
+      console.warn(`[auth/${action}] schema not ready — running migration and retrying once`);
+      const result = await migrate();
+      if (result.ran) {
+        try {
+          return await fn(req, res);
+        } catch (e2) {
+          return dbFailure(res, e2, action);
+        }
       }
+      console.error(`[auth/${action}] migration did not complete: ${result.reason}`);
+      return res.status(503).json({
+        error: `The service database is still being set up. ${RETRY_HINT}`
+      });
     }
-    return dbUnavailable(res, e, action);
+    return dbFailure(res, e, action);
   }
 }
 
 async function handleRegister(req, res) {
   const { name, email, password, org_name = '', phone = '', location = '', role = 'user',
-    id_number = '', specialization = '', experience_years = 0, cert_details = '', cert_url = '' } = req.body;
+    id_number = '', specialization = '', experience_years = 0, cert_details = '', cert_url = '' } = req.body || {};
   if (!name || !email || !password) return res.status(400).json({ error: 'name, email, password required' });
   if (!['user', 'technician'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
   if (role === 'technician' && !id_number) return res.status(400).json({ error: 'Technicians must provide a national ID number for verification.' });
-  const exists = await query('SELECT id FROM users WHERE email=$1', [email.toLowerCase()]);
+  const exists = await query('SELECT id FROM users WHERE email=$1', [String(email).toLowerCase()]);
   if (exists.rows.length) return res.status(409).json({ error: 'Email already registered' });
   const hash = await bcrypt.hash(password, 10);
   const status = role === 'technician' ? 'pending' : 'active';
   const r = await query(
     `INSERT INTO users(name,email,password_hash,role,org_name,phone,location,status,id_number,specialization,experience_years,cert_details,cert_url)
      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id,name,email,role,org_name,phone,location,status,created_at`,
-    [name, email.toLowerCase(), hash, role, org_name, phone, location, status,
+    [name, String(email).toLowerCase(), hash, role, org_name, phone, location, status,
      id_number, specialization, Number(experience_years) || 0, cert_details, cert_url]
   );
   const user = r.rows[0];
@@ -59,23 +89,25 @@ async function handleRegister(req, res) {
     });
   }
   if (role === 'user') {
-    // New institutions open to a living dashboard, never an empty one.
+    // A living dashboard beats an empty one — but this is a nicety, never a
+    // reason to fail a signup that already committed.
     try {
       const { provisionDemoDevice } = require('../services/provision');
       await provisionDemoDevice(user.id);
     } catch (e) {
-      console.error('[auth/register] demo provisioning failed:', e.message);
+      console.error('[auth/register] demo provisioning skipped:', e.message);
     }
   }
   res.status(201).json({ token, user });
 }
 
 async function handleLogin(req, res) {
-  const { email, password } = req.body;
-  const r = await query('SELECT * FROM users WHERE email=$1', [(email || '').toLowerCase()]);
+  const { email, password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+  const r = await query('SELECT * FROM users WHERE email=$1', [String(email).toLowerCase()]);
   const u = r.rows[0];
   if (!u) return res.status(401).json({ error: 'Invalid credentials' });
-  const ok = await bcrypt.compare(password || '', u.password_hash);
+  const ok = await bcrypt.compare(String(password), u.password_hash || '');
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
   if (u.status !== 'active') {
     const pendingUser = { id: u.id, name: u.name, email: u.email, role: u.role, org_name: u.org_name, phone: u.phone, location: u.location, status: u.status };
@@ -99,9 +131,9 @@ router.get('/me', require('../middleware/auth').authRequired, async (req, res) =
 });
 
 // POST /api/auth/register {name,email,password,org_name,phone,location,role=user|technician}
-router.post('/register', (req, res) => withHeal(handleRegister, req, res, 'register'));
+router.post('/register', (req, res) => withDb(handleRegister, req, res, 'register'));
 
 // POST /api/auth/login
-router.post('/login', (req, res) => withHeal(handleLogin, req, res, 'login'));
+router.post('/login', (req, res) => withDb(handleLogin, req, res, 'login'));
 
 module.exports = router;

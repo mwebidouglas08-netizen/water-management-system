@@ -1,51 +1,114 @@
 const { Pool } = require('pg');
 
-const DATABASE_URL = process.env.DATABASE_URL || '';
+const DATABASE_URL = (process.env.DATABASE_URL || '').trim();
 const isDbConfigured = Boolean(DATABASE_URL);
-const useSsl = DATABASE_URL.includes('render.com') || process.env.PGSSL === 'true';
 
-// IMPORTANT: never default to localhost on Render. If DATABASE_URL is missing,
-// fail fast with a clear message instead of ECONNREFUSED ::1:5432.
+/**
+ * TLS decision, in priority order:
+ *  1. an explicit sslmode in the URL wins (sslmode=disable → no TLS,
+ *     sslmode=require/no-verify/prefer → TLS without cert verification);
+ *  2. PGSSL=true → TLS;
+ *  3. the URL points at a managed host (render.com, …) → TLS.
+ * Otherwise no TLS (localhost, CI, unix-socket style hosts).
+ *
+ * Getting this wrong is invisible at boot but makes every query fail, which
+ * the auth routes used to report as "database unavailable".
+ */
+function resolveSslOptions(url) {
+  let sslmode = '';
+  try {
+    sslmode = (new URL(url).searchParams.get('sslmode') || '').toLowerCase();
+  } catch {
+    sslmode = '';
+  }
+  if (sslmode === 'disable' || sslmode === 'allow') return false;
+  if (['require', 'verify-ca', 'verify-full', 'prefer', 'no-verify'].includes(sslmode)) {
+    return { rejectUnauthorized: sslmode === 'verify-full' };
+  }
+  const managedHost = /(^|\.)(render\.com|railway\.app|neon\.tech|supabase\.co|aws\.neon\.tech)$/i;
+  let host = '';
+  try { host = new URL(url).hostname; } catch { host = ''; }
+  if (process.env.PGSSL === 'true' || managedHost.test(host)) return { rejectUnauthorized: false };
+  if (process.env.PGSSL === 'false') return false;
+  return false;
+}
+
 const pool = isDbConfigured
   ? new Pool({
       connectionString: DATABASE_URL,
-      ssl: useSsl ? { rejectUnauthorized: false } : undefined,
+      ssl: resolveSslOptions(DATABASE_URL),
+      max: Number(process.env.PG_POOL_MAX || 10),
+      idleTimeoutMillis: 30000,
+      // A sleeping free-tier Postgres can take a while to accept connections.
+      connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS || 20000),
+      // Recycle half-open sockets left behind by a paused/restarted database.
+      maxUses: 7500
     })
   : null;
 
+let lastPoolError = null;
 if (pool) {
-  pool.on('error', (err) => console.error('[db] pool error', err.message));
+  pool.on('error', (err) => {
+    // Idle clients being dropped (DB restart, network blip) must never crash
+    // the process; the pool replaces them on the next query.
+    lastPoolError = err.message;
+    console.error('[db] pool error:', err.message);
+  });
 } else {
   console.warn(
-    '[db] WARNING: DATABASE_URL is not set. API will boot, but DB routes will return 503. ' +
-    'On Render: link a Postgres (majisafe-db) to this service so DATABASE_URL exists.'
+    '[db] WARNING: DATABASE_URL is not set. The API boots, but database routes return 503. ' +
+    'On Render: link the Postgres instance (Environment → DATABASE_URL → fromDatabase), then redeploy.'
   );
 }
 
+function noDatabaseError() {
+  const err = new Error(
+    'DATABASE_URL is missing. Attach the Postgres database to this service (Render → Environment → DATABASE_URL → Link majisafe-db), then redeploy.'
+  );
+  err.code = 'NO_DATABASE_URL';
+  err.status = 503;
+  return err;
+}
+
 async function query(text, params) {
-  if (!pool) {
-    const err = new Error(
-      'DATABASE_URL is missing. Attach a Render Postgres to this service (Environment → DATABASE_URL from database majisafe-db), then redeploy.'
-    );
-    err.code = 'NO_DATABASE_URL';
-    err.status = 503;
-    throw err;
-  }
+  if (!pool) throw noDatabaseError();
   return pool.query(text, params);
 }
 
+// Errors that mean "the database itself is not usable right now" (as opposed
+// to a bad statement or a missing table, which are application problems).
+const TRANSIENT_CODES = new Set([
+  'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'EHOSTUNREACH', 'ENETUNREACH',
+  'ENOTFOUND', 'EAI_AGAIN', '57P01', '57P02', '57P03', '53300', '53400', '08000',
+  '08001', '08003', '08004', '08006', '08007', '08P01', 'XX000'
+]);
+
+// Connectivity/authentication problems: retrying or fixing credentials helps.
+// Deliberately does NOT include `42P01 relation does not exist` or `42704 type
+// does not exist` — those are schema/SQL defects, and reporting them as an
+// outage sends everyone hunting for a database that is actually fine.
+function isTransientDbError(e) {
+  if (!e) return false;
+  if (e.code === 'NO_DATABASE_URL') return true;
+  if (TRANSIENT_CODES.has(e.code)) return true;
+  const msg = String(e.message || '');
+  return /terminated unexpectedly|Connection terminated|timeout expired|ECONNREFUSED|ECONNRESET|ENOTFOUND|EAI_AGAIN|socket hang up|self.signed certificate|unable to verify the first certificate|no pg_hba\.conf entry|password authentication failed|the database system is (starting up|shutting down)|too many clients/i
+    .test(msg);
+}
+
 async function checkDb() {
-  if (!pool) return { configured: false, ok: false };
+  if (!pool) return { configured: false, ok: false, error: 'DATABASE_URL is not set' };
   try {
+    const t0 = Date.now();
     await pool.query('SELECT 1');
-    return { configured: true, ok: true };
+    return { configured: true, ok: true, latencyMs: Date.now() - t0, lastPoolError };
   } catch (e) {
-    return { configured: true, ok: false, error: e.message };
+    return { configured: true, ok: false, error: e.message, code: e.code || null, lastPoolError };
   }
 }
 
-// True when the core tables exist (i.e. migrate ran). Lets /api/health
-// — and support — distinguish "no database" from "schema not applied".
+// True when the core tables exist (i.e. migrate ran). Lets /api/health —
+// and support — distinguish "no database" from "schema not applied".
 async function tablesReady() {
   if (!pool) return false;
   try {
@@ -56,4 +119,32 @@ async function tablesReady() {
   }
 }
 
-module.exports = { pool, query, checkDb, isDbConfigured, tablesReady };
+// Human-readable, actionable explanation of why the DB is not answering.
+// Only used for logging and the health endpoint, never for credentials errors.
+function explainDbFailure(e) {
+  const msg = String((e && e.message) || '');
+  const code = e && e.code;
+  if (code === 'NO_DATABASE_URL') return 'DATABASE_URL is not set on this service.';
+  if (/self.signed certificate|unable to verify|certificate/i.test(msg))
+    return 'TLS certificate rejected. Set PGSSL=true for managed Postgres, or sslmode=no-verify in DATABASE_URL.';
+  if (/password authentication failed|role .* does not exist/i.test(msg))
+    return 'DATABASE_URL credentials are wrong (check user/password/database name).';
+  if (/database .* does not exist/i.test(msg))
+    return 'The database named in DATABASE_URL does not exist.';
+  if (code === 'ECONNREFUSED' || /ECONNREFUSED/.test(msg))
+    return 'The database refused the connection (wrong host/port, or the instance is down).';
+  if (/ENOTFOUND|EAI_AGAIN/.test(msg))
+    return 'The database hostname does not resolve (wrong host, or no network egress).';
+  if (/timeout|ETIMEDOUT|terminated unexpectedly|Connection terminated/i.test(msg))
+    return 'The database did not answer in time (it may be suspended/cold-starting).';
+  if (code === '42P01' || /relation .* does not exist/i.test(msg))
+    return 'The database is reachable but the schema has not been applied (run the migration / redeploy).';
+  if (code === '42501' || /permission denied/i.test(msg))
+    return 'The database user lacks permission on the schema.';
+  return msg || 'Unknown database error.';
+}
+
+module.exports = {
+  pool, query, checkDb, isDbConfigured, tablesReady,
+  isTransientDbError, explainDbFailure, noDatabaseError, resolveSslOptions
+};

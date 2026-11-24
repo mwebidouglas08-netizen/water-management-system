@@ -1,7 +1,5 @@
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
-const fs = require('fs');
-const path = require('path');
 const { pool } = require('./db');
 const { simulateReading } = require('./services/iotSimulator');
 
@@ -18,13 +16,19 @@ async function run() {
     );
     process.exit(1);
   }
-  const schemaPath = path.join(__dirname, '..', '..', 'database', 'schema.sql');
-  if (!fs.existsSync(schemaPath)) {
-    console.error(`[seed] FATAL: schema not found at ${schemaPath}. Deploy the full repo (not backend/ only) or set Root Directory=backend with repo intact.`);
+  // Use the shared migrator: it applies the schema statement by statement, so
+  // one bad statement can never roll back every table (which left freshly
+  // created databases with no schema and made sign-in answer "database
+  // unavailable"). It also takes an advisory lock, so seeding cannot fight a
+  // migration running in the web service.
+  const { migrate } = require('./migrate');
+  const migration = await migrate();
+  if (!migration.ran) {
+    console.error(`[seed] FATAL: schema could not be applied — ${migration.reason}`);
+    if (migration.failures && migration.failures.length)
+      migration.failures.forEach((f) => console.error(`  - ${f.code || ''} ${f.message}`));
     process.exit(1);
   }
-  const schema = fs.readFileSync(schemaPath, 'utf8');
-  await pool.query(schema);
   console.log('[seed] schema ok');
 
   const users = [
