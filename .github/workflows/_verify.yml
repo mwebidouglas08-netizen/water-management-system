@@ -1,0 +1,116 @@
+name: verify-db
+on:
+  workflow_dispatch:
+    inputs:
+      db_url:
+        description: 'Database URL to verify (passed at run time; never stored in the repo)'
+        required: true
+      api_host:
+        description: 'Deployed API base URL to check'
+        required: false
+        default: 'https://water-management-system-6lnh.onrender.com'
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: arena/43d20033-water-management-system
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify the database URL, then the real schema + auth flow
+        env:
+          DB_URL: ${{ inputs.db_url }}
+          API_HOST: ${{ inputs.api_host }}
+        run: |
+          cd backend && npm install --no-audit --no-fund >/dev/null 2>&1 && cd ..
+          OUT=$GITHUB_WORKSPACE/VERIFY.md
+          {
+            echo "# Database verification $(date -u +%FT%TZ)"
+            echo
+            echo "Host and database name only (credentials are never printed):"
+            echo '```'
+            node -e '
+              const u = new URL(process.env.DB_URL);
+              console.log("  host     :", u.hostname);
+              console.log("  port     :", u.port || 5432);
+              console.log("  database :", u.pathname.replace(/^\//,""));
+              console.log("  user     :", u.username);
+              console.log("  sslmode  :", u.searchParams.get("sslmode") || "(none in URL)");
+              console.log("  bare Render internal host?", /^dpg-[a-z0-9]+-a$/.test(u.hostname));
+            '
+            echo '```'
+            echo
+            echo '## 1. Can a plain client connect?'
+            echo '```'
+            node -e '
+              const { Client } = require("pg");
+              (async () => {
+                const c = new Client({ connectionString: process.env.DB_URL, ssl: { rejectUnauthorized: false }, connectionTimeoutMillis: 20000 });
+                try {
+                  const t0 = Date.now();
+                  await c.connect();
+                  const v = await c.query("SELECT version() v, current_database() d, current_user u");
+                  console.log("CONNECT OK in " + (Date.now()-t0) + "ms");
+                  console.log("  database:", v.rows[0].d);
+                  console.log("  user    :", v.rows[0].u);
+                  console.log("  server  :", String(v.rows[0].v).split(",")[0]);
+                  const t = await c.query("SELECT table_name FROM information_schema.tables WHERE table_schema=$1 ORDER BY 1", ["public"]);
+                  console.log("  tables  :", t.rows.map(r=>r.table_name).join(", ") || "(none yet)");
+                  await c.end();
+                } catch (e) {
+                  console.log("CONNECT FAILED:", e.code || "ERR", "-", e.message);
+                  process.exitCode = 1;
+                }
+              })();
+            ' 2>&1
+            echo '```'
+            echo
+            echo '## 2. Apply the app schema to it (idempotent)'
+            echo '```'
+            DATABASE_URL="$DB_URL" node -e '
+              const { migrate } = require("./backend/src/migrate");
+              migrate().then(r => {
+                console.log(JSON.stringify({ ran: r.ran, reason: r.reason, statements: r.statements, failures: r.failures }, null, 1));
+              });
+            ' 2>&1
+            echo '```'
+            echo
+            echo '## 3. Tables now present'
+            echo '```'
+            node -e '
+              const { Client } = require("pg");
+              (async () => {
+                const c = new Client({ connectionString: process.env.DB_URL, ssl: { rejectUnauthorized: false } });
+                await c.connect();
+                const t = await c.query("SELECT table_name FROM information_schema.tables WHERE table_schema=$1 ORDER BY 1", ["public"]);
+                console.log(t.rows.map(r=>r.table_name).join(", ") || "(none)");
+                const u = await c.query("SELECT count(*)::int c FROM users");
+                console.log("users rows:", u.rows[0].c);
+                await c.end();
+              })();
+            ' 2>&1
+            echo '```'
+            echo
+            echo '## 4. Live API health on the deployed service'
+            echo '```json'
+            curl -sS -m 90 "$API_HOST/api/health" 2>&1 | head -c 2500 || true
+            echo
+            echo '```'
+            echo '## 5. Live login attempt (deliberately wrong credentials)'
+            echo '```'
+            curl -sS -m 90 -o /tmp/l.json -w 'HTTP %{http_code}\n' -H 'Content-Type: application/json' \
+              -H 'Origin: https://water-management-system-two.vercel.app' \
+              -d '{"email":"nobody@example.com","password":"x"}' "$API_HOST/api/auth/login" 2>&1 || true
+            head -c 400 /tmp/l.json 2>/dev/null || true
+            echo
+            echo '```'
+          } > "$OUT"
+          git config user.name "verify-bot"
+          git config user.email "verify@users.noreply.github.com"
+          git add VERIFY.md
+          git commit -m "verify: db + api results [skip ci]" || echo "no change"
+          git push origin HEAD:verify-results --force
