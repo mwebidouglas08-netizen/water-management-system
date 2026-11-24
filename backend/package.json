@@ -1,12 +1,13 @@
 {
   "name": "majisafe-backend",
   "version": "1.0.0",
-  "description": "MajiSafe backend — Express + Postgres + AI + IoT ingest",
+  "description": "MajiSafe backend \u2014 Express + Postgres + AI + IoT ingest",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "seed": "node src/seed.js"
+    "seed": "node src/seed.js",
+    "check-db": "node scripts/check-db.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

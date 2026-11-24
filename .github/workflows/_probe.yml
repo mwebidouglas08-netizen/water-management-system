@@ -101,6 +101,11 @@ jobs:
             ' 2>&1
             echo '```'
             echo
+            echo '## 3b. npm run check-db (the operator-facing tool)'
+            echo '```'
+            (cd backend && DATABASE_URL="$DB_URL" npm run --silent check-db) 2>&1 | head -30
+            echo '```'
+            echo
             echo '## 4. Live API health'
             echo '```json'
             curl -sS -m 90 "$API_HOST/api/health" 2>&1 | head -c 2500
