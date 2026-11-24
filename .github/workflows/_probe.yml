@@ -1,4 +1,4 @@
-name: verify-db
+name: probe
 on:
   workflow_dispatch:
     inputs:
@@ -27,7 +27,7 @@ jobs:
           API_HOST: ${{ inputs.api_host }}
         run: |
           cd backend && npm install --no-audit --no-fund >/dev/null 2>&1 && cd ..
-          OUT=$GITHUB_WORKSPACE/VERIFY.md
+          OUT=$GITHUB_WORKSPACE/PROBE.md
           {
             echo "# Database verification $(date -u +%FT%TZ)"
             echo
@@ -111,6 +111,6 @@ jobs:
           } > "$OUT"
           git config user.name "verify-bot"
           git config user.email "verify@users.noreply.github.com"
-          git add VERIFY.md
+          git add PROBE.md
           git commit -m "verify: db + api results [skip ci]" || echo "no change"
-          git push origin HEAD:verify-results --force
+          git push origin HEAD:probe-results --force
