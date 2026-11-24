@@ -44,7 +44,7 @@ export default function Register() {
     }
     setMsg(''); setBusy(true); setNote('');
     try {
-      const data = await register({ ...f, email: f.email.trim() }, (n) => setNote(`Server is waking up — retrying (${n}/2)…`));
+      const data = await register({ ...f, email: f.email.trim() }, (n, total) => setNote(`Server is waking up — retrying (${n}/${total})…`));
       if (data.token) {
         if (data.message) setMsg(data.message);
         const u = data.user;

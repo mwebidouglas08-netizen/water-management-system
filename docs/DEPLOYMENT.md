@@ -65,5 +65,36 @@ Cold starts: free tier sleeps; first request ~40s. Frontend retries automaticall
 ## E. Common errors avoided
 - `Prisma generate` — not used (plain `pg`), so no build break.
 - ESM/CJS mix — backend is CJS (`require`), frontend ESM; no cross-import.
-- CORS — allowlist from `FRONTEND_URL`, comma-separated ok.
+- CORS — allowlist from `FRONTEND_URL`, normalised (trailing slash, missing
+  scheme and case are all tolerated). Project `*.vercel.app` and
+  `*.onrender.com` hosts are always accepted, so preview URLs work too.
 - Postgres SSL — enabled automatically when URL contains `render.com`.
+
+## F. "Failed to fetch" on sign-in / sign-up — what it means and how to fix it
+
+`Failed to fetch` is the browser's wording for *the request never completed*:
+wrong/unreachable API address, a CORS block, or a server that never answered.
+It is not an authentication error. Check, in this order:
+
+1. **Open `https://<backend>.onrender.com/api/health`** (from your own browser).
+   - No response → the service is asleep or crashed. Open Render → Logs. Start
+     command must be `npm start` and the port must be `$PORT`.
+2. **Confirm the CORS allowlist.** The health payload now reports the origin
+   the browser sent:
+   ```json
+   { "origin": "https://your-app.vercel.app", "originAllowed": true,
+     "corsAllowlist": ["https://your-app.vercel.app"] }
+   ```
+   If `originAllowed` is `false`, set Render → `FRONTEND_URL` to your frontend
+   URL (comma-separate several) and redeploy. There is also
+   `GET /api/health/cors` for a quick check.
+3. **Confirm the frontend knows where the API is.** Vercel → Settings →
+   Environment Variables → `VITE_API_URL=https://<backend>.onrender.com`, then
+   **redeploy** — Vite bakes this in at build time, so a rebuild is mandatory.
+   The build log now prints a `[majisafe]` warning when it is missing, and the
+   app itself names the missing variable instead of saying "Failed to fetch".
+4. **Local development** needs no env var: `npm run dev` proxies `/api` to
+   `http://127.0.0.1:5000` (override with `VITE_PROXY_TARGET`).
+
+If the API answers but sign-in still fails, the message now tells you which —
+`Invalid credentials` (401), `Account pending` (403) or a database 503 message.

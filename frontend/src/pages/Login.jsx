@@ -19,7 +19,7 @@ export default function Login() {
     if (busy) return;
     setErr(''); setNote(''); setBusy(true);
     try {
-      const u = await login(email.trim(), password, (n) => setNote(`Server is waking up — retrying (${n}/2)…`));
+      const u = await login(email.trim(), password, (n, total) => setNote(`Server is waking up — retrying (${n}/${total})…`));
       nav(u.role === 'admin' ? '/admin' : u.role === 'technician' ? '/tech' : '/app');
     } catch (e) {
       setErr(apiErrorMessage(e, 'Sign in failed. Check your email and password.'));
